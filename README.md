@@ -5,44 +5,64 @@
 
 《移动应用项目工程实践》居家实训考核作品。
 
+**仓库**：https://github.com/YNT37/vita
+
 ## ✨ 功能
-- 🔐 多用户账号体系（注册/登录，JWT 鉴权，数据按用户隔离）
-- 💰 记账理财：记一笔 / 分类 / 收支统计图表
-- ⏰ 日程提醒：待办 / 账单 / 到期提醒
-- 🤖 AI 管家：角色切换 + 对话 + 每日简报 + 自然语言记账
+- 🔐 多用户账号体系（注册/登录，JWT 鉴权，数据按用户隔离）✅
+- 💰 记账理财：记一笔 / 分类 / 收支统计 ✅
+- ⏰ 日程提醒：待办 / 账单 / 到期提醒 ✅
+- 🤖 AI 管家：角色切换 + 对话 + 每日简报 + 自然语言记账 🔲
 
 ## 🧱 技术栈
-Next.js(App Router+TS+Tailwind) · Flask + SQLAlchemy · PostgreSQL · LangChain + DeepSeek · JWT
+Next.js 16(App Router+TS+Tailwind v4) · Flask + SQLAlchemy · PostgreSQL · LangChain + DeepSeek · JWT
 
 ## 📁 结构
 ```
 vita/
-├── backend/     # Flask + SQLAlchemy + LangChain
+├── backend/     # Flask + SQLAlchemy（本地 SQLite，线上 PostgreSQL）
 ├── frontend/    # Next.js
-└── docs/        # 需求文档 / 架构 / API / prompt_log / 研发日志 / 审查清单
+└── docs/        # 需求 / 架构 / API / prompt_log / 研发日志 / 审查清单
 ```
+
+## 🗺️ 前端路由（当前进度）
+| 路由 | 页面 | 状态 |
+|---|---|---|
+| `/login` | 登录 | ✅ |
+| `/register` | 注册 | ✅ |
+| `/` | 仪表盘 | ✅ |
+| `/records` | 记账 | ✅ |
+| `/reminders` | 提醒 | ✅ |
+| `/persona` | AI 管家 | 🔲 待开发 |
 
 ## 🚀 本地运行
-```bash
-# 后端
-cd backend && python -m venv .venv && .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-copy .env.example .env      # 填 DATABASE_URL / DEEPSEEK_API_KEY / JWT_SECRET
-python app.py               # http://localhost:5000/api/health
 
-# 前端
-npx create-next-app@latest frontend --ts --tailwind --app --eslint --src-dir --use-npm
-cd frontend && copy .env.local.example .env.local   # NEXT_PUBLIC_API_BASE
-npm run dev
+### 后端（Flask · 端口 5000）
+```powershell
+cd backend
+pip install -r requirements.txt
+Copy-Item .env.example .env    # 本地 SQLite 可留空 DATABASE_URL
+# Windows 若 python 命令不可用，用全路径：
+# "E:\Env\Python\Python312\python.exe" app.py
+python app.py                  # http://localhost:5000/api/health
 ```
+
+### 前端（Next.js · 端口 3000）
+```powershell
+cd frontend
+Copy-Item .env.local.example .env.local   # NEXT_PUBLIC_API_BASE=http://localhost:5000
+npm install    # 首次
+npm run dev    # http://localhost:3000
+```
+
+> 前后端需**同时运行**。注册/登录后可在浏览器操作记账与提醒。
 
 ## 🔑 环境变量
 | 变量 | 位置 | 说明 |
 |---|---|---|
-| DATABASE_URL | backend/.env | 本地 SQLite / 线上 PostgreSQL |
-| DEEPSEEK_API_KEY | backend/.env | DeepSeek 密钥 |
+| DATABASE_URL | backend/.env | 本地留空→SQLite；线上 PostgreSQL |
+| DEEPSEEK_API_KEY | backend/.env | DeepSeek 密钥（AI 功能用） |
 | JWT_SECRET | backend/.env | JWT 签名密钥 |
-| NEXT_PUBLIC_API_BASE | frontend/.env.local | 后端地址 |
+| NEXT_PUBLIC_API_BASE | frontend/.env.local | 后端地址，默认 `http://localhost:5000` |
 
 ## 📦 部署
 前端 Vercel；后端自建云服务器（Docker Compose：Flask + PostgreSQL + Caddy 自动 HTTPS）。
@@ -52,4 +72,15 @@ npm run dev
 - 后端：_待部署_
 
 ## 📚 文档
-需求 [docs/需求文档.md](docs/需求文档.md) · 架构 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · API [docs/API文档.md](docs/API文档.md)
+| 文档 | 说明 |
+|---|---|
+| [docs/需求文档.md](docs/需求文档.md) | 功能需求 FRD v1.1 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计 |
+| [docs/API文档.md](docs/API文档.md) | 接口契约 |
+| [docs/prompt_log.md](docs/prompt_log.md) | AI Prompt 日志（考核 10%） |
+| [docs/研发日志/](docs/研发日志/) | 每日研发总结 |
+| [docs/review_checklist.md](docs/review_checklist.md) | 代码审查清单 |
+
+## 🔀 分支说明
+- `main`：后端全套（鉴权 / 记账 / 提醒）
+- `feat/frontend`：前端开发支线（登录 / 记账页 / 提醒页）
