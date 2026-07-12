@@ -72,3 +72,11 @@
 - AI 原始输出：
   > reminders/page.tsx：完整 CRUD 对接后端；类型中文标签；临期高亮；表单校验与 ApiError 错误提示；列表空态与加载态。（原始输出见本次 Cursor 对话截图）
 - 采纳情况：全部采纳。
+
+### #8 · 2026-07-12 · Cursor(Claude) · 前端记账页
+- 对应功能/文件：`frontend/src/app/records/page.tsx`
+- Prompt：
+  > 实现 /records 记账页（需登录守卫）：月份选择器默认当月；GET /api/stats/summary 展示收入/支出/结余与分类统计；记一笔表单 type/amount/category/note/date 调 POST /api/transactions；GET /api/transactions?month= 列表 + DELETE 删除；loading/error/empty 三态；样式对齐提醒页。
+- AI 原始输出：
+  > records/page.tsx：收支切换按钮、快捷分类标签、月度统计卡片、分类明细列表、交易记录列表与删除；记账后自动刷新列表与统计。（原始输出见本次 Cursor 对话截图）
+- 采纳情况：全部采纳。
