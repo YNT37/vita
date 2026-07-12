@@ -22,3 +22,29 @@
 - AI 原始输出：
   > （见 docs/需求文档.md、docs/ARCHITECTURE.md）
 - 采纳情况：采纳。
+
+---
+
+### #2 · 2026-07-12 · Cursor(Claude) · 后端骨架
+- 对应功能/文件：`backend/config.py`、`extensions.py`、`models.py`、`errors.py`、`app.py`、`requirements.txt`、`.env.example`
+- Prompt：
+  > 按 docs/ARCHITECTURE.md 的目录结构、docs/API文档.md 的契约，创建 Day1 后端骨架：config/extensions/models/errors/app + requirements + .env.example；本地先用 SQLite，统一错误体 {"error":{"code","message","field?"}}，GET /api/health 返回 {"status":"ok"}。
+- AI 原始输出：
+  > 生成上述 8 个文件：create_app 工厂初始化 db/jwt/cors 并注册蓝图与错误处理；六张表 users/categories/transactions/reminders/chat_messages/settings（密码 werkzeug 哈希）；ApiError 统一异常 + 400/404/405/500 兜底 + JWT 未授权/过期/无效统一 401。（原始输出见本次 Cursor 对话截图）
+- 采纳情况：全部采纳。
+
+### #3 · 2026-07-12 · Cursor(Claude) · 注册/登录/鉴权
+- 对应功能/文件：`backend/blueprints/auth.py`
+- Prompt：
+  > 实现账号与鉴权蓝图：POST /api/auth/register（用户名唯一→重复409、密码<6→400）、POST /api/auth/login（校验后签发 JWT、错误→401）、GET /api/me（需 JWT）。
+- AI 原始输出：
+  > auth_bp + me_bp；werkzeug.security 哈希；create_access_token(identity=str(user.id))；所有异常走 ApiError，输出格式与业务错误一致。（原始输出见本次 Cursor 对话截图）
+- 采纳情况：全部采纳。
+
+### #4 · 2026-07-12 · Cursor(Claude) · 记账接口与统计
+- 对应功能/文件：`backend/blueprints/finance.py`
+- Prompt：
+  > 实现记账蓝图：POST/GET/DELETE /api/transactions + GET /api/stats/summary，全部按 user_id 隔离；校验 type∈{income,expense}、amount 为数字且 0<amount≤1亿、date 为 YYYY-MM-DD，非法→400；越权/不存在→404。
+- AI 原始输出：
+  > finance_bp；Decimal 校验金额（含 NaN、上限）；按月左闭右开区间聚合 income/expense/byCategory/byDay；删除仅限本人、否则 404。（原始输出见本次 Cursor 对话截图）
+- 采纳情况：全部采纳。
