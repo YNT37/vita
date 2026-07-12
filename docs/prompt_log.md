@@ -56,3 +56,11 @@
 - AI 原始输出：
   > reminders_bp；due_at 兼容多种 ISO 格式解析；四个接口全部按 user_id 过滤；PATCH 支持 done 切换与字段编辑；越权/不存在统一 404；已在 create_app 注册。（原始输出见本次 Cursor 对话截图）
 - 采纳情况：全部采纳。
+
+### #6 · 2026-07-12 · Cursor(Claude) · 前端 API 客户端与登录/注册
+- 对应功能/文件：`frontend/src/lib/api.ts`、`lib/auth.tsx`、`app/login/page.tsx`、`app/register/page.tsx`、`app/layout.tsx`、`app/page.tsx`、`.env.local(.example)`
+- Prompt：
+  > 在 Next.js(App Router + TS + Tailwind v4) 前端实现：lib/api.ts（读 NEXT_PUBLIC_API_BASE，fetch 封装，自动带 Bearer，统一解析 {error:{code,message,field}}）；lib/auth.tsx（AuthProvider + useAuth，token 存 localStorage，挂载时用 /api/me 恢复登录态）；/login、/register 页面（表单校验、错误提示、成功跳仪表盘）；layout 挂 AuthProvider；首页做登录守卫（未登录跳 /login）。
+- AI 原始输出：
+  > 生成上述文件：ApiError 类透传后端错误码与 field；注册后自动登录；首页展示用户名 + 退出登录 + 功能入口卡片；未登录自动跳 /login。（原始输出见本次 Cursor 对话截图）
+- 采纳情况：全部采纳。
