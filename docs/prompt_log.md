@@ -48,3 +48,11 @@
 - AI 原始输出：
   > finance_bp；Decimal 校验金额（含 NaN、上限）；按月左闭右开区间聚合 income/expense/byCategory/byDay；删除仅限本人、否则 404。（原始输出见本次 Cursor 对话截图）
 - 采纳情况：全部采纳。
+
+### #5 · 2026-07-12 · Cursor(Claude) · 提醒（日程）接口
+- 对应功能/文件：`backend/blueprints/reminders.py`、`backend/app.py`（注册蓝图）
+- Prompt：
+  > 实现提醒蓝图 reminders_bp（需 JWT、按 user_id 隔离）：GET /api/reminders（按 due_at 升序）、POST /api/reminders {title,due_at,type(bill/life/anniversary),note}（title 空/超长→400、due_at 非法→400、type 非法→400）、PATCH /api/reminders/<id>（切换 done，可选改 title/due_at/type/note）、DELETE /api/reminders/<id>（越权/不存在→404）。并在 app.py 注册该蓝图。
+- AI 原始输出：
+  > reminders_bp；due_at 兼容多种 ISO 格式解析；四个接口全部按 user_id 过滤；PATCH 支持 done 切换与字段编辑；越权/不存在统一 404；已在 create_app 注册。（原始输出见本次 Cursor 对话截图）
+- 采纳情况：全部采纳。

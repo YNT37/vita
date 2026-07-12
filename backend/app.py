@@ -16,10 +16,12 @@ def create_app(config_class=Config):
     # 导入模型确保建表；导入蓝图并注册
     from blueprints.auth import auth_bp, me_bp
     from blueprints.finance import finance_bp
+    from blueprints.reminders import reminders_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(me_bp)
     app.register_blueprint(finance_bp)
+    app.register_blueprint(reminders_bp)
 
     register_error_handlers(app)
     register_jwt_error_handlers(jwt)
