@@ -64,3 +64,11 @@
 - AI 原始输出：
   > 生成上述文件：ApiError 类透传后端错误码与 field；注册后自动登录；首页展示用户名 + 退出登录 + 功能入口卡片；未登录自动跳 /login。（原始输出见本次 Cursor 对话截图）
 - 采纳情况：全部采纳。
+
+### #7 · 2026-07-12 · Cursor(Claude) · 前端提醒页
+- 对应功能/文件：`frontend/src/app/reminders/page.tsx`
+- Prompt：
+  > 实现 /reminders 提醒页（需登录守卫）：GET /api/reminders 列表按 due_at 升序；新增表单 title/due_at(datetime-local)/type(bill|life|anniversary)/note 调 POST；勾选切换 done 调 PATCH；删除调 DELETE；loading/error/empty 三态；3 天内到期未完成高亮「即将到期」；顶部返回仪表盘；样式对齐现有页面。
+- AI 原始输出：
+  > reminders/page.tsx：完整 CRUD 对接后端；类型中文标签；临期高亮；表单校验与 ApiError 错误提示；列表空态与加载态。（原始输出见本次 Cursor 对话截图）
+- 采纳情况：全部采纳。
