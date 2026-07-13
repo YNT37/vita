@@ -310,3 +310,30 @@ def ai_brief():
 ```
 
 - 采纳情况：全部采纳。
+
+---
+
+### #11 · 2026-07-13 · Cursor(Claude) · 前端 AI 管家页
+- 对应功能/文件：`frontend/src/app/persona/page.tsx`、`frontend/src/app/page.tsx`
+- Prompt：
+  > 实现 /persona 页面（需登录守卫）：GET/POST /api/persona 角色切换；POST /api/ai/brief 今日播报区；POST /api/ai/chat 对话气泡 UI；POST /api/ai/parse 自然语言解析预览，确认后写入 /api/transactions 或 /api/reminders；loading/error 三态；样式对齐现有页面。仪表盘去掉「将陆续上线」文案。
+- AI 原始输出：
+
+```tsx
+// persona/page.tsx（摘录）
+async function switchPersona(id) {
+  await apiFetch("/api/persona", { method: "POST", body: { persona: id } });
+  setMessages([]);
+  await loadBrief();
+}
+
+// 对话
+const res = await apiFetch("/api/ai/chat", { method: "POST", body: { message: text } });
+setMessages((prev) => [...prev, { role: "assistant", content: res.reply }]);
+
+// 解析 + 确认写入
+const parsed = await apiFetch("/api/ai/parse", { method: "POST", body: { text } });
+if (parsed.intent === "transaction") await apiFetch("/api/transactions", { method: "POST", body: parsed.data });
+```
+
+- 采纳情况：全部采纳。

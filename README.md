@@ -32,7 +32,7 @@ vita/
 | `/` | 仪表盘 | ✅ |
 | `/records` | 记账 | ✅ |
 | `/reminders` | 提醒 | ✅ |
-| `/persona` | AI 管家 | 🔲 待开发 |
+| `/persona` | AI 管家 | ✅ |
 
 ## 🚀 本地运行
 

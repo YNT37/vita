@@ -39,8 +39,6 @@ export default function Home() {
         <NavCard href="/reminders" title="提醒" desc="待办 · 账单到期" />
         <NavCard href="/persona" title="AI 管家" desc="角色对话 · 每日播报" />
       </div>
-
-      <p className="text-xs text-gray-400 mt-8">功能页面将陆续上线。</p>
     </main>
   );
 }
