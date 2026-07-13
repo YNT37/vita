@@ -5,3 +5,6 @@ Flask-JWT-Extended==4.6.0
 python-dotenv==1.0.1
 psycopg2-binary==2.9.9
 gunicorn==22.0.0
+langchain==0.3.18
+langchain-openai==0.3.6
+pydantic==2.10.6

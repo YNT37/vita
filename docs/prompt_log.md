@@ -254,3 +254,34 @@ async function onCreate(e: React.FormEvent) {
 ```
 
 - 采纳情况：全部采纳。
+
+---
+
+### #9 · 2026-07-13 · Cursor(Claude) · AI 服务层（角色 prompt + LangChain + 降级）
+- 对应功能/文件：`backend/services/prompts.py`、`backend/services/ai_service.py`、`backend/requirements.txt`
+- Prompt：
+  > 按 docs/ARCHITECTURE.md 第 5 节创建 AI 服务层：prompts.py 含 4 角色 system prompt 与 chat/brief 静态兜底文案；ai_service.py 实现 generate_chat_reply、generate_brief、parse_input，LangChain ChatOpenAI 接 DeepSeek（惰性初始化、timeout 25s）；无 Key/超时/异常/非法 JSON 一律降级；history 最近 6 轮、单条截断 500 字；parse 先 LLM JSON 再正则兜底（「午饭30」→transaction、「提醒我…」→reminder）。requirements 补 langchain/langchain-openai/pydantic。
+- AI 原始输出：
+
+```python
+# services/prompts.py（摘录）
+PERSONA_OPTIONS = ("butler", "servant", "sassy", "lover")
+SYSTEM_PROMPTS = {"butler": "你是 Vita 生活管家...", ...}
+FALLBACK_CHAT = {"butler": "您说得是。我这边暂时无法连接 AI 服务...", ...}
+
+# services/ai_service.py（摘录）
+def _get_llm():
+    if not api_key: return None
+    _LLM = ChatOpenAI(base_url="https://api.deepseek.com", model="deepseek-chat", timeout=25)
+
+def generate_chat_reply(persona, message, history):
+    reply = _invoke_llm(SYSTEM_PROMPTS[persona], user_prompt)
+    return reply or FALLBACK_CHAT[persona]
+
+def parse_input(text):
+    result = _llm_parse(text)
+    if result and result["intent"] != "unknown": return result
+    return _regex_parse(text)  # 「午饭30」→ expense transaction
+```
+
+- 采纳情况：全部采纳。
