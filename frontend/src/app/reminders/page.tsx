@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useAutoReload, useDataRefresh } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
+import { PageContainer } from "@/components/PageContainer";
 
 type ReminderType = "bill" | "life" | "anniversary";
 
@@ -155,9 +156,9 @@ export default function RemindersPage() {
   }
 
   return (
-    <main className="flex-1 p-6 max-w-2xl mx-auto w-full">
-      <header className="mb-6">
-        <h1 className="text-xl font-semibold">日程提醒</h1>
+    <PageContainer>
+      <header className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-semibold">日程提醒</h1>
         <p className="text-sm text-gray-500">待办、账单与纪念日到期提醒</p>
       </header>
 
@@ -285,6 +286,6 @@ export default function RemindersPage() {
           </ul>
         )}
       </section>
-    </main>
+    </PageContainer>
   );
 }

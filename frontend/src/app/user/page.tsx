@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth, type User } from "@/lib/auth";
 import { useAutoReload } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
+import { PageContainer } from "@/components/PageContainer";
 import { type PersonaId, PERSONA_LABELS } from "@/lib/persona";
 
 type OverviewBrief = {
@@ -142,9 +143,9 @@ export default function UserPage() {
   const pendingCount = overview?.reminders_pending?.length ?? 0;
 
   return (
-    <main className="flex-1 p-4 max-w-2xl mx-auto w-full space-y-4">
-      <header>
-        <h1 className="text-xl font-semibold">我的</h1>
+    <PageContainer className="space-y-4">
+      <header className="mb-0">
+        <h1 className="text-xl sm:text-2xl font-semibold">我的</h1>
         <p className="text-sm text-gray-500">账号与快捷入口</p>
       </header>
 
@@ -157,7 +158,8 @@ export default function UserPage() {
       {loading && !profile ? (
         <p className="text-sm text-gray-500">加载中…</p>
       ) : (
-        <>
+        <div className="space-y-4 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0 lg:items-start">
+          <div className="space-y-4">
           <section className="rounded-2xl border border-black/10 dark:border-white/15 p-4">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-12 h-12 rounded-full bg-blue-600 text-white grid place-items-center text-lg font-semibold">
@@ -277,7 +279,9 @@ export default function UserPage() {
               <span className="text-gray-400">→</span>
             </Link>
           </section>
+          </div>
 
+          <div className="space-y-4">
           <section className="rounded-2xl border border-black/10 dark:border-white/15 p-4">
             <h2 className="text-sm font-medium mb-3">修改密码</h2>
             <form onSubmit={savePassword} className="space-y-3">
@@ -324,8 +328,9 @@ export default function UserPage() {
           >
             退出登录
           </button>
-        </>
+          </div>
+        </div>
       )}
-    </main>
+    </PageContainer>
   );
 }

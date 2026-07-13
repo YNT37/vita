@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useAutoReload, useDataRefresh } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
+import { PageContainer } from "@/components/PageContainer";
 
 type TxnType = "income" | "expense";
 type AssetKind = "asset" | "liability";
@@ -385,9 +386,9 @@ export default function StatsPage() {
   const liabilities = data?.assets.filter((a) => a.kind === "liability") ?? [];
 
   return (
-    <main className="flex-1 p-4 max-w-2xl mx-auto w-full pb-4">
+    <PageContainer wide>
       <header className="mb-4">
-        <h1 className="text-xl font-semibold">统计中心</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold">统计中心</h1>
         <p className="text-sm text-gray-500">自由增删改账户、待办与分类，维护你的财务档案</p>
       </header>
 
@@ -434,22 +435,24 @@ export default function StatsPage() {
         <>
           {tab === "overview" && (
             <div className="space-y-4">
-              <section className="grid gap-3 sm:grid-cols-3">
+              <section className="grid gap-3 grid-cols-2 sm:grid-cols-3">
                 <StatCard label="本月收入" value={data.stats.income} color="text-green-600" />
                 <StatCard label="本月支出" value={data.stats.expense} color="text-red-500" />
                 <StatCard
                   label="本月结余"
                   value={data.stats.balance}
                   color={data.stats.balance >= 0 ? "text-blue-600" : "text-red-500"}
+                  className="col-span-2 sm:col-span-1"
                 />
               </section>
-              <section className="grid gap-3 sm:grid-cols-3">
+              <section className="grid gap-3 grid-cols-2 sm:grid-cols-3">
                 <StatCard label="资产合计" value={data.assets_total} color="text-blue-600" />
                 <StatCard label="负债合计" value={data.liabilities_total || 0} color="text-amber-600" />
                 <StatCard
                   label="净资产"
                   value={data.net_worth ?? data.assets_total}
                   color="text-emerald-600"
+                  className="col-span-2 sm:col-span-1"
                 />
               </section>
               {data.stats.byCategory.length > 0 && (
@@ -841,7 +844,7 @@ export default function StatsPage() {
           )}
         </>
       )}
-    </main>
+    </PageContainer>
   );
 }
 
@@ -982,15 +985,17 @@ function StatCard({
   label,
   value,
   color,
+  className = "",
 }: {
   label: string;
   value: number;
   color: string;
+  className?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-black/10 dark:border-white/15 p-4">
+    <div className={`rounded-2xl border border-black/10 dark:border-white/15 p-3 sm:p-4 ${className}`}>
       <p className="text-xs text-gray-500 mb-1">{label}</p>
-      <p className={`text-xl font-semibold ${color}`}>¥{formatMoney(value)}</p>
+      <p className={`text-lg sm:text-xl font-semibold ${color}`}>¥{formatMoney(value)}</p>
     </div>
   );
 }

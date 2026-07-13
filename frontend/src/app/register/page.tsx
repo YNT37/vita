@@ -38,8 +38,8 @@ export default function RegisterPage() {
   }
 
   return (
-    <main className="flex-1 grid place-items-center p-6">
-      <div className="w-full max-w-sm rounded-2xl border border-black/10 dark:border-white/15 p-8 shadow-sm">
+    <main className="flex-1 grid place-items-center p-4 sm:p-6">
+      <div className="w-full max-w-sm rounded-2xl border border-black/10 dark:border-white/15 p-6 sm:p-8 shadow-sm">
         <h1 className="text-2xl font-semibold mb-1">注册 Vita</h1>
         <p className="text-sm text-gray-500 mb-6">创建账号，开始你的生活管理</p>
         <form onSubmit={onSubmit} className="space-y-4">

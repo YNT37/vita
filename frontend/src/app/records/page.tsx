@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useAutoReload, useDataRefresh } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
+import { PageContainer } from "@/components/PageContainer";
 
 type TxnType = "income" | "expense";
 
@@ -163,9 +164,9 @@ export default function RecordsPage() {
   const balance = (stats?.income ?? 0) - (stats?.expense ?? 0);
 
   return (
-    <main className="flex-1 p-6 max-w-2xl mx-auto w-full">
-      <header className="mb-6">
-        <h1 className="text-xl font-semibold">记账理财</h1>
+    <PageContainer wide>
+      <header className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-semibold">记账理财</h1>
         <p className="text-sm text-gray-500">
           记一笔收支流水。账户余额/负债请到{" "}
           <a href="/stats" className="text-blue-600 hover:underline">
@@ -186,7 +187,7 @@ export default function RecordsPage() {
       </div>
 
       {stats && (
-        <section className="grid gap-3 sm:grid-cols-3 mb-6">
+        <section className="grid gap-3 grid-cols-2 sm:grid-cols-3 mb-6">
           <StatCard label="本月收入" value={formatMoney(stats.income)} color="text-green-600" />
           <StatCard label="本月支出" value={formatMoney(stats.expense)} color="text-red-500" />
           <StatCard
@@ -364,7 +365,7 @@ export default function RecordsPage() {
           </ul>
         )}
       </section>
-    </main>
+    </PageContainer>
   );
 }
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { apiFetch, ApiError } from "@/lib/api";
+import { PageContainer } from "@/components/PageContainer";
 import { type PersonaId, PERSONA_LABELS, PERSONA_OPTIONS } from "@/lib/persona";
 
 type AiProvider = "openai" | "anthropic";
@@ -159,15 +160,15 @@ export default function SettingsPage() {
   const isAnthropic = provider === "anthropic";
 
   return (
-    <main className="flex-1 p-4 max-w-2xl mx-auto w-full">
-      <header className="mb-6">
+    <PageContainer>
+      <header className="mb-4 sm:mb-6">
         <Link
           href="/user"
           className="text-xs text-gray-500 hover:text-blue-600 mb-2 inline-block"
         >
           ← 返回我的
         </Link>
-        <h1 className="text-xl font-semibold">AI 设置</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold">AI 设置</h1>
         <p className="text-sm text-gray-500">管家性格与 AI 接口</p>
       </header>
 
@@ -299,6 +300,6 @@ export default function SettingsPage() {
           </button>
         </form>
       )}
-    </main>
+    </PageContainer>
   );
 }

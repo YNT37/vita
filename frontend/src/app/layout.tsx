@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
@@ -20,6 +20,16 @@ export const metadata: Metadata = {
   description: "多用户 AI 生活管家：记账、提醒、AI 角色陪伴",
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -30,7 +40,7 @@ export default function RootLayout({
       lang="zh-CN"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-dvh flex flex-col">
         <AuthProvider>
           <DataRefreshProvider>
             <AppShell>{children}</AppShell>

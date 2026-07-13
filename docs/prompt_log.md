@@ -534,3 +534,18 @@ await apiFetch(`/api/assets/${id}`, { method: "PATCH", body: { name, balance, ki
 ```
 
 - 采纳情况：全部采纳。职责划分：`/user`=账号中心，`/settings`=AI 配置子页。
+
+---
+
+### #22 · 2026-07-13 · Cursor(Grok) · 响应式布局（手机/电脑自适应）
+- 对应功能/文件：`AppShell.tsx`、`PageContainer.tsx`、`layout.tsx`、`globals.css`、各业务页
+- Prompt：
+  > 优化一下页面结构，自适应电脑手机浏览器
+- AI 原始输出：
+
+```tsx
+// md+: 左侧导航；手机：底栏 + safe-area
+// PageContainer 统一宽度/内边距；管家页 lg 双栏
+```
+
+- 采纳情况：全部采纳。

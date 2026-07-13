@@ -19,8 +19,26 @@
   }
 }
 
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
+  min-height: 100%;
+  min-height: 100dvh;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  overflow-x: hidden;
+}
+
+/* 防止桌面侧栏布局下输入框被键盘顶乱：移动端固定视口时用 dvh */
+@supports (height: 100dvh) {
+  .min-h-dvh {
+    min-height: 100dvh;
+  }
+  .h-dvh {
+    height: 100dvh;
+  }
 }
