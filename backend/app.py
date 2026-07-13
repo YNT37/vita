@@ -18,12 +18,14 @@ def create_app(config_class=Config):
     from blueprints.finance import finance_bp
     from blueprints.reminders import reminders_bp
     from blueprints.ai import ai_bp
+    from blueprints.settings import settings_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(me_bp)
     app.register_blueprint(finance_bp)
     app.register_blueprint(reminders_bp)
     app.register_blueprint(ai_bp)
+    app.register_blueprint(settings_bp)
 
     register_error_handlers(app)
     register_jwt_error_handlers(jwt)

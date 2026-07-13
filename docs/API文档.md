@@ -44,6 +44,9 @@
 
 - `GET /api/persona` → `{current,options:["butler","servant","sassy","lover"]}`
 - `POST /api/persona` `{persona}` → `{current}`（未知角色→400）
+- `GET /api/settings` → `{persona,persona_options,ai_provider,ai_provider_options,ai_configured,ai_api_key_set,ai_api_key_hint,ai_base_url,ai_model,...}`
+- `POST /api/settings` `{persona?,ai_provider?,ai_api_key?,ai_base_url?,ai_model?}` → 同上（传空字符串可清除用户侧配置）
+- `ai_provider`：`openai`（需 Key+Base URL+Model）或 `anthropic`（需 Key+Model，Base URL 可选）
 - `POST /api/ai/chat` `{message}` → `{reply}`（空→400）
 - `POST /api/ai/brief` → `{text}`（聚合当日数据，角色语气播报）
 - `POST /api/ai/parse` `{text}` → `{intent:"transaction|reminder|unknown", data:{...}}`

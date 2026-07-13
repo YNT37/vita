@@ -1,4 +1,4 @@
-"""LangChain + DeepSeek AI 服务，含降级兜底。"""
+"""LangChain AI 服务：OpenAI 兼容 + Anthropic，含降级兜底。"""
 
 import json
 import logging
@@ -14,13 +14,44 @@ from services.prompts import (
     PERSONA_OPTIONS,
     SYSTEM_PROMPTS,
 )
+from services.user_settings import AI_PROVIDER_DEFAULTS
 
 logger = logging.getLogger(__name__)
 
 MAX_HISTORY = 6
 MAX_CONTENT_LEN = 500
-_LLM = None
-_LLM_FAILED = False
+_LLM_CACHE: dict[str, object] = {}
+
+
+def _normalize_provider(provider: str | None) -> str:
+    p = (provider or "openai").strip().lower()
+    return p if p in ("openai", "anthropic") else "openai"
+
+
+def _resolve_api_key(user_api_key: str | None = None) -> str:
+    if user_api_key and str(user_api_key).strip():
+        return str(user_api_key).strip()
+    return (current_app.config.get("AI_API_KEY") or "").strip()
+
+
+def _resolve_base_url(provider: str, user_base_url: str | None = None) -> str:
+    if user_base_url is not None and str(user_base_url).strip():
+        return str(user_base_url).strip().rstrip("/")
+    if provider == "anthropic":
+        return ""
+    env = (current_app.config.get("AI_BASE_URL") or "").strip()
+    return env.rstrip("/") if env else AI_PROVIDER_DEFAULTS["openai"]["base_url"]
+
+
+def _resolve_model(provider: str, user_model: str | None = None) -> str:
+    if user_model and str(user_model).strip():
+        return str(user_model).strip()
+    env = (current_app.config.get("AI_MODEL") or "").strip()
+    return env if env else AI_PROVIDER_DEFAULTS[provider]["model"]
+
+
+def _llm_cache_key(provider: str, api_key: str, base_url: str, model: str) -> str:
+    return f"{provider}|{base_url}|{model}|{api_key}"
 
 
 def _valid_persona(persona):
@@ -32,36 +63,63 @@ def _truncate(text, limit=MAX_CONTENT_LEN):
     return text[:limit] if len(text) > limit else text
 
 
-def _get_llm():
-    """惰性初始化 LLM；无 Key 或初始化失败返回 None。"""
-    global _LLM, _LLM_FAILED
-    if _LLM_FAILED:
+def _get_llm(
+    provider: str = "openai",
+    api_key: str | None = None,
+    base_url: str | None = None,
+    model: str | None = None,
+):
+    """按 Provider + Key + Base URL + Model 惰性初始化 LLM。"""
+    resolved_provider = _normalize_provider(provider)
+    resolved_key = _resolve_api_key(api_key)
+    resolved_base = _resolve_base_url(resolved_provider, base_url)
+    resolved_model = _resolve_model(resolved_provider, model)
+    if not resolved_key:
         return None
-    if _LLM is not None:
-        return _LLM
-    api_key = (current_app.config.get("DEEPSEEK_API_KEY") or "").strip()
-    if not api_key:
-        return None
+    cache_key = _llm_cache_key(resolved_provider, resolved_key, resolved_base, resolved_model)
+    if cache_key in _LLM_CACHE:
+        return _LLM_CACHE[cache_key]
     try:
-        from langchain_openai import ChatOpenAI
+        if resolved_provider == "anthropic":
+            from langchain_anthropic import ChatAnthropic
 
-        _LLM = ChatOpenAI(
-            base_url="https://api.deepseek.com",
-            api_key=api_key,
-            model="deepseek-chat",
-            temperature=0.7,
-            timeout=25,
-            max_retries=1,
-        )
-        return _LLM
+            kwargs = {
+                "model": resolved_model,
+                "api_key": resolved_key,
+                "temperature": 0.7,
+                "timeout": 25,
+                "max_retries": 1,
+            }
+            if resolved_base:
+                kwargs["base_url"] = resolved_base
+            llm = ChatAnthropic(**kwargs)
+        else:
+            from langchain_openai import ChatOpenAI
+
+            llm = ChatOpenAI(
+                base_url=resolved_base,
+                api_key=resolved_key,
+                model=resolved_model,
+                temperature=0.7,
+                timeout=25,
+                max_retries=1,
+            )
+        _LLM_CACHE[cache_key] = llm
+        return llm
     except Exception as e:
         logger.warning("LLM init failed: %s", e)
-        _LLM_FAILED = True
         return None
 
 
-def _invoke_llm(system: str, user: str) -> str | None:
-    llm = _get_llm()
+def _invoke_llm(
+    system: str,
+    user: str,
+    provider: str = "openai",
+    api_key: str | None = None,
+    base_url: str | None = None,
+    model: str | None = None,
+) -> str | None:
+    llm = _get_llm(provider, api_key, base_url, model)
     if not llm:
         return None
     try:
@@ -75,7 +133,18 @@ def _invoke_llm(system: str, user: str) -> str | None:
         return None
 
 
-def generate_chat_reply(persona: str, message: str, history: list | None = None) -> str:
+def _ai_params(ai_config: dict | None = None):
+    cfg = ai_config or {}
+    provider = _normalize_provider(cfg.get("provider"))
+    return provider, cfg.get("api_key"), cfg.get("base_url"), cfg.get("model")
+
+
+def generate_chat_reply(
+    persona: str,
+    message: str,
+    history: list | None = None,
+    ai_config: dict | None = None,
+) -> str:
     persona = _valid_persona(persona)
     message = _truncate(message)
     if not message:
@@ -92,11 +161,14 @@ def generate_chat_reply(persona: str, message: str, history: list | None = None)
     parts.append(f"user: {message}")
     user_prompt = "以下是对话历史（最近几轮）与当前用户消息，请以角色语气回复：\n" + "\n".join(parts)
 
-    reply = _invoke_llm(system, user_prompt)
+    provider, key, base, model = _ai_params(ai_config)
+    reply = _invoke_llm(system, user_prompt, provider, key, base, model)
     return reply or FALLBACK_CHAT[persona]
 
 
-def generate_brief(persona: str, context: dict | None = None) -> str:
+def generate_brief(
+    persona: str, context: dict | None = None, ai_config: dict | None = None
+) -> str:
     persona = _valid_persona(persona)
     ctx = context or {}
     txns = ctx.get("transactions_today") or []
@@ -122,7 +194,8 @@ def generate_brief(persona: str, context: dict | None = None) -> str:
 
     system = SYSTEM_PROMPTS[persona] + " 请根据以下今日数据，用角色语气写一段 100 字以内的每日播报。"
     user_prompt = "\n".join(summary_lines)
-    reply = _invoke_llm(system, user_prompt)
+    provider, key, base, model = _ai_params(ai_config)
+    reply = _invoke_llm(system, user_prompt, provider, key, base, model)
     return reply or FALLBACK_BRIEF[persona]
 
 
@@ -178,7 +251,7 @@ def _regex_parse(text: str) -> dict:
     return {"intent": "unknown", "data": {}}
 
 
-def _llm_parse(text: str) -> dict | None:
+def _llm_parse(text: str, ai_config: dict | None = None) -> dict | None:
     system = (
         "你是记账助手。把用户输入解析为 JSON，仅输出 JSON，不要 markdown。"
         '格式：{"intent":"transaction|reminder|unknown","data":{...}}。'
@@ -186,7 +259,8 @@ def _llm_parse(text: str) -> dict | None:
         "reminder 的 data 含 title, due_at(ISO), type(bill/life/anniversary), note。"
         "无法解析则 intent=unknown, data={}。"
     )
-    raw = _invoke_llm(system, text)
+    provider, key, base, model = _ai_params(ai_config)
+    raw = _invoke_llm(system, text, provider, key, base, model)
     if not raw:
         return None
     raw = raw.strip()
@@ -203,12 +277,12 @@ def _llm_parse(text: str) -> dict | None:
         return None
 
 
-def parse_input(text: str) -> dict:
+def parse_input(text: str, ai_config: dict | None = None) -> dict:
     text = _truncate(text, 200)
     if not text:
         return {"intent": "unknown", "data": {}}
 
-    result = _llm_parse(text)
+    result = _llm_parse(text, ai_config)
     if result and result.get("intent") != "unknown":
         return result
     regex_result = _regex_parse(text)

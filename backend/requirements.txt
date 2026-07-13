@@ -7,4 +7,5 @@ psycopg2-binary==2.9.9
 gunicorn==22.0.0
 langchain==0.3.18
 langchain-openai==0.3.6
+langchain-anthropic==0.3.6
 pydantic==2.10.6

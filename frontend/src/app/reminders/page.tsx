@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { apiFetch, ApiError } from "@/lib/api";
@@ -155,10 +154,7 @@ export default function RemindersPage() {
   return (
     <main className="flex-1 p-6 max-w-2xl mx-auto w-full">
       <header className="mb-6">
-        <Link href="/" className="text-sm text-blue-600 hover:underline">
-          ← 返回仪表盘
-        </Link>
-        <h1 className="text-2xl font-semibold mt-2">日程提醒</h1>
+        <h1 className="text-xl font-semibold">日程提醒</h1>
         <p className="text-sm text-gray-500">待办、账单与纪念日到期提醒</p>
       </header>
 

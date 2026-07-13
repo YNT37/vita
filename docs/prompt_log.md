@@ -337,3 +337,80 @@ if (parsed.intent === "transaction") await apiFetch("/api/transactions", { metho
 ```
 
 - 采纳情况：全部采纳。
+
+---
+
+### #12 · 2026-07-13 · Cursor(Claude) · 前端布局重构（管家主页 + 设置页）
+- 对应功能/文件：`frontend/src/app/page.tsx`、`settings/page.tsx`、`components/AppShell.tsx`；`backend/blueprints/settings.py`、`services/user_settings.py`
+- Prompt：
+  > 重构布局：/ 为 AI 管家主页；/settings 放性格与 API Key；底部导航；/persona 重定向。后端 GET/POST /api/settings，用户 Key 存库并优先用于 AI 调用。
+- AI 原始输出：
+
+```tsx
+// AppShell 底部导航：管家 / 记账 / 提醒 / 设置
+// settings 页：性格四选一 + DeepSeek API Key 密码框 + 保存
+```
+
+```python
+@settings_bp.post("/settings")
+def update_settings():
+    set_persona(uid, persona)
+    set_user_api_key(uid, deepseek_api_key)  # 空字符串清除
+```
+
+- 采纳情况：全部采纳。
+
+---
+
+### #13 · 2026-07-13 · Cursor(Claude) · AI 接口改为 OpenAI 通用格式
+- 对应功能/文件：`backend/config.py`、`services/ai_service.py`、`services/user_settings.py`、`blueprints/settings.py`、`blueprints/ai.py`；`frontend/src/app/settings/page.tsx`；`backend/.env.example`；`docs/API文档.md`
+- Prompt：
+  > 先不急着上传，api 接口不一定用 deepseek，可以用 openai 通用接口
+- AI 原始输出：
+
+```python
+# config.py
+AI_API_KEY = os.getenv("AI_API_KEY", os.getenv("DEEPSEEK_API_KEY", ""))
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.openai.com/v1")
+AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
+
+def resolve_ai_config(user_id):
+    return {"api_key": ..., "base_url": ..., "model": ..., "configured": bool(...)}
+
+def _get_llm(api_key, base_url, model):
+    llm = ChatOpenAI(base_url=resolved_base, api_key=resolved_key, model=resolved_model, timeout=25)
+```
+
+```tsx
+// settings 页：API Key + Base URL + Model 三字段
+<input value={baseUrl} placeholder="https://api.openai.com/v1" />
+<input value={model} placeholder="gpt-4o-mini / deepseek-chat" />
+```
+
+- 采纳情况：全部采纳。DeepSeek 仍可作为兼容端点，通过 Base URL + Model 配置即可。
+
+---
+
+### #14 · 2026-07-13 · Cursor(Claude) · 新增 Anthropic 接口
+- 对应功能/文件：`backend/config.py`、`services/ai_service.py`、`services/user_settings.py`、`blueprints/settings.py`；`frontend/src/app/settings/page.tsx`；`backend/requirements.txt`、`backend/.env.example`；`docs/API文档.md`、`README.md`
+- Prompt：
+  > 再添加一个 Anthropic 接口吧
+- AI 原始输出：
+
+```python
+AI_PROVIDER = os.getenv("AI_PROVIDER", "openai")  # openai | anthropic
+
+def _get_llm(provider, api_key, base_url, model):
+    if provider == "anthropic":
+        llm = ChatAnthropic(model=resolved_model, api_key=resolved_key, base_url=resolved_base or None)
+    else:
+        llm = ChatOpenAI(base_url=resolved_base, api_key=resolved_key, model=resolved_model)
+```
+
+```tsx
+// settings 页：接口类型二选一
+<button onClick={() => switchProvider("openai")}>OpenAI 兼容</button>
+<button onClick={() => switchProvider("anthropic")}>Anthropic</button>
+```
+
+- 采纳情况：全部采纳。Anthropic 仅需 Key + Model；Base URL 留空走官方端点，代理时可填。

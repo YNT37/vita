@@ -30,6 +30,10 @@ class Config:
     JWT_SECRET_KEY = os.getenv("JWT_SECRET", "dev-jwt-secret-change-me")
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=int(os.getenv("JWT_EXPIRES_HOURS", "24")))
 
-    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+    # AI 接口：openai（OpenAI 兼容）/ anthropic（Anthropic 原生）
+    AI_PROVIDER = os.getenv("AI_PROVIDER", "openai").strip().lower()
+    AI_API_KEY = os.getenv("AI_API_KEY", os.getenv("DEEPSEEK_API_KEY", ""))
+    AI_BASE_URL = os.getenv("AI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
 
     CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]

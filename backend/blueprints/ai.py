@@ -4,34 +4,17 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from extensions import db
-from models import ChatMessage, Reminder, Setting, Transaction
+from models import ChatMessage, Reminder, Transaction
 from errors import ApiError
 from services.ai_service import generate_brief, generate_chat_reply, parse_input
 from services.prompts import PERSONA_OPTIONS
+from services.user_settings import get_persona, set_persona, resolve_ai_config
 
 ai_bp = Blueprint("ai", __name__, url_prefix="/api")
-
-PERSONA_KEY = "persona"
 
 
 def _uid():
     return int(get_jwt_identity())
-
-
-def _get_persona(user_id):
-    row = Setting.query.filter_by(user_id=user_id, key=PERSONA_KEY).first()
-    if row and row.value in PERSONA_OPTIONS:
-        return row.value
-    return "butler"
-
-
-def _set_persona(user_id, persona):
-    row = Setting.query.filter_by(user_id=user_id, key=PERSONA_KEY).first()
-    if row:
-        row.value = persona
-    else:
-        db.session.add(Setting(user_id=user_id, key=PERSONA_KEY, value=persona))
-    db.session.commit()
 
 
 def _load_history(user_id, persona):
@@ -47,7 +30,6 @@ def _load_history(user_id, persona):
 
 def _today_brief_context(user_id):
     today = date.today()
-    start = datetime.combine(today, datetime.min.time())
     end = datetime.combine(today, datetime.max.time())
 
     txns = (
@@ -78,21 +60,21 @@ def _today_brief_context(user_id):
 
 @ai_bp.get("/persona")
 @jwt_required()
-def get_persona():
+def get_persona_route():
     return jsonify({
-        "current": _get_persona(_uid()),
+        "current": get_persona(_uid()),
         "options": list(PERSONA_OPTIONS),
     }), 200
 
 
 @ai_bp.post("/persona")
 @jwt_required()
-def set_persona():
+def set_persona_route():
     data = request.get_json(silent=True) or {}
     persona = (data.get("persona") or "").strip()
     if persona not in PERSONA_OPTIONS:
         raise ApiError("invalid_persona", "未知角色，可选 butler/servant/sassy/lover", 400, "persona")
-    _set_persona(_uid(), persona)
+    set_persona(_uid(), persona)
     return jsonify({"current": persona}), 200
 
 
@@ -107,9 +89,10 @@ def ai_chat():
         raise ApiError("invalid_message", "消息不超过500字", 400, "message")
 
     uid = _uid()
-    persona = _get_persona(uid)
+    persona = get_persona(uid)
+    ai_cfg = resolve_ai_config(uid)
     history = _load_history(uid, persona)
-    reply = generate_chat_reply(persona, message, history)
+    reply = generate_chat_reply(persona, message, history, ai_config=ai_cfg)
 
     db.session.add(ChatMessage(user_id=uid, role="user", content=message, persona=persona))
     db.session.add(ChatMessage(user_id=uid, role="assistant", content=reply, persona=persona))
@@ -122,9 +105,10 @@ def ai_chat():
 @jwt_required()
 def ai_brief():
     uid = _uid()
-    persona = _get_persona(uid)
+    persona = get_persona(uid)
+    ai_cfg = resolve_ai_config(uid)
     context = _today_brief_context(uid)
-    text = generate_brief(persona, context)
+    text = generate_brief(persona, context, ai_config=ai_cfg)
     return jsonify({"text": text}), 200
 
 
@@ -138,5 +122,5 @@ def ai_parse():
     if len(text) > 200:
         raise ApiError("invalid_text", "文本不超过200字", 400, "text")
 
-    result = parse_input(text)
+    result = parse_input(text, ai_config=resolve_ai_config(_uid()))
     return jsonify(result), 200

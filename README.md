@@ -14,7 +14,7 @@
 - 🤖 AI 管家：角色切换 + 对话 + 每日简报 + 自然语言记账 🔲
 
 ## 🧱 技术栈
-Next.js 16(App Router+TS+Tailwind v4) · Flask + SQLAlchemy · PostgreSQL · LangChain + DeepSeek · JWT
+Next.js 16(App Router+TS+Tailwind v4) · Flask + SQLAlchemy · PostgreSQL · LangChain + OpenAI 兼容 / Anthropic · JWT
 
 ## 📁 结构
 ```
@@ -29,10 +29,11 @@ vita/
 |---|---|---|
 | `/login` | 登录 | ✅ |
 | `/register` | 注册 | ✅ |
-| `/` | 仪表盘 | ✅ |
+| `/` | **AI 管家（主页）** | ✅ |
 | `/records` | 记账 | ✅ |
 | `/reminders` | 提醒 | ✅ |
-| `/persona` | AI 管家 | ✅ |
+| `/settings` | 设置（性格 / API Key） | ✅ |
+| `/persona` | 重定向至 `/` | ✅ |
 
 ## 🚀 本地运行
 
@@ -60,7 +61,10 @@ npm run dev    # http://localhost:3000
 | 变量 | 位置 | 说明 |
 |---|---|---|
 | DATABASE_URL | backend/.env | 本地留空→SQLite；线上 PostgreSQL |
-| DEEPSEEK_API_KEY | backend/.env | DeepSeek 密钥（AI 功能用） |
+| AI_PROVIDER | backend/.env | `openai` 或 `anthropic`，默认 openai |
+| AI_API_KEY | backend/.env | API Key（也可用旧名 DEEPSEEK_API_KEY） |
+| AI_BASE_URL | backend/.env | 接口地址，默认 `https://api.openai.com/v1` |
+| AI_MODEL | backend/.env | 模型名，默认 `gpt-4o-mini` |
 | JWT_SECRET | backend/.env | JWT 签名密钥 |
 | NEXT_PUBLIC_API_BASE | frontend/.env.local | 后端地址，默认 `http://localhost:5000` |
 
