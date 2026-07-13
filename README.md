@@ -41,20 +41,31 @@ vita/
 
 ## 🚀 本地运行
 
-### 后端（Flask · 端口 5000）
+### 后端（Flask · 端口 5000 · 推荐 venv）
 ```powershell
 cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item .env.example .env    # 本地 SQLite 可留空 DATABASE_URL
-# Windows 若 python 命令不可用，用全路径：
-# "E:\Env\Python\Python312\python.exe" app.py
 python app.py                  # http://localhost:5000/api/health
+```
+
+Linux / macOS：
+```bash
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+python app.py
 ```
 
 ### 前端（Next.js · 端口 3000）
 ```powershell
 cd frontend
-Copy-Item .env.local.example .env.local   # NEXT_PUBLIC_API_BASE=http://localhost:5000
+Copy-Item .env.local.example .env.local -ErrorAction SilentlyContinue
+# 若无 example：新建 .env.local，内容 NEXT_PUBLIC_API_BASE=http://localhost:5000
 npm install    # 首次
 npm run dev    # http://localhost:3000
 ```
@@ -86,41 +97,51 @@ npm run dev    # http://localhost:3000
 3. 点「发送测试弹窗」验证；到期待办约每 45 秒检查一次（需保持网页打开）
 
 ## 📦 部署
-前端 + 后端可同机 Docker Compose 部署（Caddy 反代，测试用 SQLite）。正式环境也可前端放 Vercel、后端单独上云。
+推荐：**Python venv + npm**（改 `.env` 即可，无需 Docker）。可选 Docker Compose（见 `docker-compose.yml`）。
 
-## ☁️ 云服务器部署（从 GitHub 拉取 · 推荐测试）
+## ☁️ 云服务器部署（从 GitHub 拉取 · venv）
 
-服务器需：公网 IP、开放 **80** 端口、已装 Docker + Compose 插件。
+服务器需：公网 IP、已装 **Python3 / Node.js 18+ / git**，安全组放行 **3000、5000**（或前面再挂 Nginx 只开 80）。
 
 ```bash
-# 1. 首次：克隆
+# 1. 克隆
 git clone https://github.com/YNT37/vita.git
 cd vita
 
-# 2. 配置后端密钥（必填 SECRET_KEY / JWT_SECRET；AI_API_KEY 可后填）
+# 2. 部署配置：填公网 IP
+cp deploy/.env.example deploy/.env
+nano deploy/.env          # PUBLIC_HOST=你的公网IP
+
+# 3. 后端密钥 / AI（可沿用已有 venv：在 deploy/.env 设 VENV_DIR=/path/to/.venv）
 cp backend/.env.example backend/.env
-nano backend/.env
+nano backend/.env         # SECRET_KEY、JWT_SECRET；可选 AI_API_KEY
 
-# 3. 构建并启动（会拉镜像、构建前后端）
-chmod +x deploy/pull-and-up.sh
-./deploy/pull-and-up.sh
-# 或：docker compose up -d --build
+# 4. 装依赖并启动
+chmod +x deploy/*.sh
+./deploy/venv-setup.sh
+./deploy/venv-start.sh
 ```
 
-之后更新代码只需：
+之后更新代码：
 
 ```bash
-cd ~/vita   # 或你的克隆目录
-./deploy/pull-and-up.sh
+cd ~/vita
+./deploy/pull-and-up.sh    # git pull + 重装依赖 + 重启
 ```
 
-访问：`http://<服务器公网IP>`（Caddy 把 `/` 指到前端，`/api` 指到后端）
+访问：
+- 前端 `http://<PUBLIC_HOST>:3000`
+- 后端 `http://<PUBLIC_HOST>:5000/api/health`
 
 ```bash
-curl http://127.0.0.1/api/health   # 应返回 {"status":"ok"}
+./deploy/venv-stop.sh      # 停止
+tail -f deploy/run/backend.log
 ```
 
-> 安全组 / 防火墙请放行 80。HTTPS 与域名可在正式阶段再配。
+> 若本机已有可用的 Python venv，在 `deploy/.env` 里设置 `VENV_DIR=/你的/venv路径`，setup 会直接往里装依赖，不再新建。
+
+### 可选：Docker Compose
+需已装 Docker。同域 80 端口反代见 `docker-compose.yml` 与旧版 `deploy/Caddyfile`。
 
 ## 🌐 线上地址
 - 一体部署：`http://<服务器公网IP>`

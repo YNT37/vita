@@ -28,6 +28,5 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Logs
-logs/
-*.log
+deploy/run/
+deploy/.env

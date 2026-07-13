@@ -620,3 +620,17 @@ POST /api/wxpusher/dispatch
 ```
 
 - 采纳情况：全部采纳。
+
+---
+
+### #30 · 2026-07-13 · Cursor(Grok) · venv 云部署脚本
+- 对应功能/文件：`deploy/venv-*.sh`、`deploy/.env.example`、`pull-and-up.sh`、`README.md`
+- Prompt：
+  > 我的python 的venv环境能用，修改一下吧，方便配置
+- AI 原始输出：
+
+```bash
+# deploy/.env 配 PUBLIC_HOST / VENV_DIR；venv-setup + venv-start
+```
+
+- 采纳情况：全部采纳。
