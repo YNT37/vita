@@ -13,15 +13,29 @@
 
 ## 1. 安装 Docker（Ubuntu 示例）
 
-若已安装可跳过：
+若已安装可跳过。国内访问 `get.docker.com` 常失败，**优先用 apt**：
 
 ```bash
-curl -fsSL https://get.docker.com | sh
+sudo apt update
+sudo apt install -y docker.io docker-compose-v2
+sudo systemctl enable --now docker
 sudo usermod -aG docker $USER
-# 重新登录 SSH 后再执行 docker 命令
+# 若当前是 root 可直接用；普通用户需重新登录 SSH 后再执行 docker
+
 docker version
 docker compose version
 ```
+
+若只有旧包名，可试：
+
+```bash
+sudo apt install -y docker-compose-plugin
+# 或独立命令：
+sudo apt install -y docker-compose
+docker-compose version
+```
+
+> 已有 `docker version` 但提示 `unknown command: docker compose` 时，补装 `docker-compose-v2`（或 `docker-compose-plugin`）即可，不必再跑 get.docker.com。
 
 ---
 
