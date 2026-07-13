@@ -281,7 +281,32 @@ def generate_chat_reply(persona, message, history):
 def parse_input(text):
     result = _llm_parse(text)
     if result and result["intent"] != "unknown": return result
-    return _regex_parse(text)  # 「午饭30」→ expense transaction
+- 采纳情况：全部采纳。
+
+---
+
+### #10 · 2026-07-13 · Cursor(Claude) · AI 管家 HTTP 接口
+- 对应功能/文件：`backend/blueprints/ai.py`、`backend/app.py`
+- Prompt：
+  > 实现 ai 蓝图并注册：GET/POST /api/persona（settings 表存当前角色，未知→400）；POST /api/ai/chat（空 message→400，读 chat_messages 历史调 generate_chat_reply，存 user/assistant 消息）；POST /api/ai/brief（聚合当日交易与未完成提醒调 generate_brief）；POST /api/ai/parse（空 text→400，调 parse_input）。均需 JWT。
+- AI 原始输出：
+
+```python
+@ai_bp.post("/ai/chat")
+@jwt_required()
+def ai_chat():
+    message = (data.get("message") or "").strip()
+    if not message: raise ApiError("invalid_message", "消息不能为空", 400, "message")
+    persona = _get_persona(_uid())
+    reply = generate_chat_reply(persona, message, _load_history(uid, persona))
+    db.session.add(ChatMessage(..., role="user", ...))
+    db.session.add(ChatMessage(..., role="assistant", content=reply, ...))
+    return jsonify({"reply": reply}), 200
+
+@ai_bp.post("/ai/brief")
+def ai_brief():
+    context = _today_brief_context(uid)  # 当日交易 + 未完成提醒
+    return jsonify({"text": generate_brief(persona, context)}), 200
 ```
 
 - 采纳情况：全部采纳。
