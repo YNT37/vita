@@ -40,8 +40,34 @@ def create_app(config_class=Config):
 
     with app.app_context():
         db.create_all()
+        _ensure_schema()
 
     return app
+
+
+def _ensure_schema():
+    """轻量迁移：为已有 SQLite/PG 表补列。"""
+    from sqlalchemy import text
+
+    stmts = [
+        "ALTER TABLE assets ADD COLUMN kind VARCHAR(16) DEFAULT 'asset'",
+    ]
+    with db.engine.begin() as conn:
+        for sql in stmts:
+            try:
+                conn.execute(text(sql))
+            except Exception:
+                pass
+        # 旧负债备注回填 kind
+        try:
+            conn.execute(
+                text("UPDATE assets SET kind='liability' WHERE note LIKE '%负债%'")
+            )
+            conn.execute(
+                text("UPDATE assets SET kind='asset' WHERE kind IS NULL OR kind=''")
+            )
+        except Exception:
+            pass
 
 
 app = create_app()

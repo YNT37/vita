@@ -896,14 +896,18 @@ def apply_balance_update(user_id: int, data: dict) -> str:
     except Exception:
         raise ValueError("invalid balance")
     note = (data.get("note") or "").strip()[:200]
+    kind = (data.get("kind") or "").strip()
+    if kind not in ("asset", "liability"):
+        kind = "liability" if _is_liability_name(name) or "负债" in note else "asset"
     asset = Asset.query.filter_by(user_id=user_id, name=name).first()
     if asset:
         asset.balance = balance
         asset.note = note
+        asset.kind = kind
         asset.updated_at = datetime.utcnow()
         action = f"已更新{name}余额为 {float(balance)} 元"
     else:
-        asset = Asset(user_id=user_id, name=name, balance=balance, note=note)
+        asset = Asset(user_id=user_id, name=name, balance=balance, note=note, kind=kind)
         db.session.add(asset)
         action = f"已记录{name}余额 {float(balance)} 元"
     db.session.commit()

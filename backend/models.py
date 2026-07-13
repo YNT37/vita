@@ -120,20 +120,26 @@ class Setting(db.Model):
 
 
 class Asset(db.Model):
-    """用户资产余额快照（基金、余额宝等）。"""
+    """用户资产/负债账户余额快照。"""
     __tablename__ = "assets"
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     name = db.Column(db.String(32), nullable=False)
     balance = db.Column(db.Numeric(14, 2), nullable=False)
+    kind = db.Column(db.String(16), default="asset")  # asset / liability
     note = db.Column(db.String(200), default="")
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
+        kind = self.kind or "asset"
+        if kind not in ("asset", "liability"):
+            # 兼容旧数据：备注含负债则视为负债
+            kind = "liability" if "负债" in (self.note or "") else "asset"
         return {
             "id": self.id,
             "name": self.name,
             "balance": float(self.balance),
+            "kind": kind,
             "note": self.note or "",
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

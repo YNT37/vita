@@ -504,3 +504,18 @@ understanding = understand_message(message, context, ai_cfg, history_text=...)
 ```
 
 - 采纳情况：全部采纳。并说明「记账页」只显示流水，资产在「统计→资产」。
+
+---
+
+### #20 · 2026-07-13 · Cursor(Claude) · 统计中心可自由编辑维护
+- 对应功能/文件：`frontend/src/app/stats/page.tsx`；`backend` assets PATCH、categories PATCH、Asset.kind；`overview` 净资产拆分
+- Prompt：
+  > 统计列表需要强自定义性，可以自由修改各种数据，方便用户维护信息
+- AI 原始输出：
+
+```tsx
+// 账户/待办/分类均支持新增、行内编辑、删除；账户可标资产/负债
+await apiFetch(`/api/assets/${id}`, { method: "PATCH", body: { name, balance, kind, note } });
+```
+
+- 采纳情况：全部采纳。

@@ -27,7 +27,8 @@
 ## 二、记账 Transactions（需 JWT）
 
 - `GET /api/assets` → 资产余额列表
-- `POST /api/assets` `{name,balance,note?}` → 记录/更新资产余额（同名覆盖）
+- `POST /api/assets` `{name,balance,note?,kind?}` → 记录/更新（kind: asset|liability）
+- `PATCH /api/assets/<id>` `{name?,balance?,note?,kind?}` → 按 ID 修改
 - `DELETE /api/assets/<id>` → `{"ok":true}`
 - `GET /api/transactions?month=YYYY-MM` → 列表（仅本人）
 - `POST /api/transactions` `{type(income/expense),amount>0,category,note,date}` → 201
@@ -40,11 +41,12 @@
 
 - `GET /api/categories?kind=expense|income` → 用户分类列表（首次访问自动种子默认分类）
 - `POST /api/categories` `{name,kind}` → 201
+- `PATCH /api/categories/<id>` `{name?,kind?}` → 重命名/改类型
 - `DELETE /api/categories/<id>` → `{"ok":true}`
 
 ### 统计概览 Overview（需 JWT）
 
-- `GET /api/overview?month=YYYY-MM` → `{month,stats,assets,assets_total,reminders_pending,reminders_overdue_count,categories}`
+- `GET /api/overview?month=YYYY-MM` → `{month,stats,assets,assets_total,liabilities_total,net_worth,reminders_pending,categories}`
 
 ## 三、提醒 Reminders（需 JWT）
 

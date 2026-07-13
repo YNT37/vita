@@ -157,16 +157,67 @@ def upsert_asset():
     note = (data.get("note") or "").strip()
     if len(note) > 200:
         raise ApiError("invalid_note", "备注不超过200位", 400, "note")
+    kind = (data.get("kind") or "").strip() or ("liability" if "负债" in note else "asset")
+    if kind not in ("asset", "liability"):
+        raise ApiError("invalid_kind", "kind 必须是 asset 或 liability", 400, "kind")
 
     uid = _uid()
     asset = Asset.query.filter_by(user_id=uid, name=name).first()
     if asset:
         asset.balance = balance
         asset.note = note
+        asset.kind = kind
         asset.updated_at = datetime.utcnow()
     else:
-        asset = Asset(user_id=uid, name=name, balance=balance, note=note)
+        asset = Asset(user_id=uid, name=name, balance=balance, note=note, kind=kind)
         db.session.add(asset)
+    db.session.commit()
+    return jsonify(asset.to_dict()), 200
+
+
+@finance_bp.patch("/assets/<int:asset_id>")
+@jwt_required()
+def patch_asset(asset_id):
+    asset = Asset.query.filter_by(id=asset_id, user_id=_uid()).first()
+    if not asset:
+        raise ApiError("not_found", "资产不存在", 404)
+    data = request.get_json(silent=True) or {}
+
+    if "name" in data:
+        name = (data.get("name") or "").strip()
+        if not name or len(name) > 32:
+            raise ApiError("invalid_name", "资产名称不能为空且不超过32位", 400, "name")
+        conflict = (
+            Asset.query.filter_by(user_id=_uid(), name=name)
+            .filter(Asset.id != asset_id)
+            .first()
+        )
+        if conflict:
+            raise ApiError("name_taken", "已存在同名账户", 409, "name")
+        asset.name = name
+
+    if "balance" in data:
+        try:
+            balance = Decimal(str(data.get("balance")))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ApiError("invalid_balance", "余额必须是数字", 400, "balance")
+        if not balance.is_finite() or balance < 0 or balance > Decimal("10000000000"):
+            raise ApiError("invalid_balance", "余额需为非负数且不超过100亿", 400, "balance")
+        asset.balance = balance
+
+    if "note" in data:
+        note = (data.get("note") or "").strip()
+        if len(note) > 200:
+            raise ApiError("invalid_note", "备注不超过200位", 400, "note")
+        asset.note = note
+
+    if "kind" in data:
+        kind = (data.get("kind") or "").strip()
+        if kind not in ("asset", "liability"):
+            raise ApiError("invalid_kind", "kind 必须是 asset 或 liability", 400, "kind")
+        asset.kind = kind
+
+    asset.updated_at = datetime.utcnow()
     db.session.commit()
     return jsonify(asset.to_dict()), 200
 
