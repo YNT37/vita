@@ -1,0 +1,44 @@
+# Vita 云服务器测试部署（从 GitHub 拉取后一键启动）
+# 用法见 README「云服务器部署」
+
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    volumes:
+      # SQLite 持久化（测试够用；上正式可改 DATABASE_URL 接 Postgres）
+      - vita_data:/app/data
+    environment:
+      # 容器内把 SQLite 放到挂载卷
+      DATABASE_URL: sqlite:////app/data/vita.db
+      CORS_ORIGINS: "*"
+    expose:
+      - "5000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # 同域反代：前端请求 /api → Caddy → backend
+        NEXT_PUBLIC_API_BASE: ""
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  vita_data:

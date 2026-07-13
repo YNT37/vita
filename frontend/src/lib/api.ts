@@ -1,5 +1,5 @@
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE || "http://localhost:5000";
+  process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:5000";
 
 /** 后端统一错误体 {"error":{code,message,field?}} 的前端表示。 */
 export class ApiError extends Error {

@@ -86,11 +86,45 @@ npm run dev    # http://localhost:3000
 3. 点「发送测试弹窗」验证；到期待办约每 45 秒检查一次（需保持网页打开）
 
 ## 📦 部署
-前端 Vercel；后端自建云服务器（Docker Compose：Flask + PostgreSQL + Caddy 自动 HTTPS）。
+前端 + 后端可同机 Docker Compose 部署（Caddy 反代，测试用 SQLite）。正式环境也可前端放 Vercel、后端单独上云。
+
+## ☁️ 云服务器部署（从 GitHub 拉取 · 推荐测试）
+
+服务器需：公网 IP、开放 **80** 端口、已装 Docker + Compose 插件。
+
+```bash
+# 1. 首次：克隆
+git clone https://github.com/YNT37/vita.git
+cd vita
+
+# 2. 配置后端密钥（必填 SECRET_KEY / JWT_SECRET；AI_API_KEY 可后填）
+cp backend/.env.example backend/.env
+nano backend/.env
+
+# 3. 构建并启动（会拉镜像、构建前后端）
+chmod +x deploy/pull-and-up.sh
+./deploy/pull-and-up.sh
+# 或：docker compose up -d --build
+```
+
+之后更新代码只需：
+
+```bash
+cd ~/vita   # 或你的克隆目录
+./deploy/pull-and-up.sh
+```
+
+访问：`http://<服务器公网IP>`（Caddy 把 `/` 指到前端，`/api` 指到后端）
+
+```bash
+curl http://127.0.0.1/api/health   # 应返回 {"status":"ok"}
+```
+
+> 安全组 / 防火墙请放行 80。HTTPS 与域名可在正式阶段再配。
 
 ## 🌐 线上地址
-- 前端：_待部署_
-- 后端：_待部署_
+- 一体部署：`http://<服务器公网IP>`
+- 前端 / 后端分拆：_待填_
 
 ## 📚 文档
 | 文档 | 说明 |
@@ -103,5 +137,5 @@ npm run dev    # http://localhost:3000
 | [docs/review_checklist.md](docs/review_checklist.md) | 代码审查清单 |
 
 ## 🔀 分支说明
-- `main`：后端全套（鉴权 / 记账 / 提醒）
-- `feat/frontend`：前端开发支线（登录 / 记账页 / 提醒页）
+- `main`：当前主干（前后端完整）
+- `feat/persona-frontend`：已合并进 `main` 的开发支线

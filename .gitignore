@@ -3,9 +3,13 @@ backend/.venv/
 __pycache__/
 *.pyc
 .env
+.env.local
+!.env.example
+!.env.local.example
 instance/
 *.sqlite3
 *.db
+!backend/.env.example
 
 # Node / Next.js
 node_modules/
