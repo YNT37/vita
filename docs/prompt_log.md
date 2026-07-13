@@ -623,14 +623,14 @@ POST /api/wxpusher/dispatch
 
 ---
 
-### #30 · 2026-07-13 · Cursor(Grok) · venv 云部署脚本
-- 对应功能/文件：`deploy/venv-*.sh`、`deploy/.env.example`、`pull-and-up.sh`、`README.md`
+### #31 · 2026-07-13 · Cursor(Grok) · 完整部署教程
+- 对应功能/文件：`docs/部署教程.md`、`.env.example`、`docker-compose.postgres.yml`、`README.md`
 - Prompt：
-  > 我的python 的venv环境能用，修改一下吧，方便配置
+  > backend/.env.example backend/.env部分的教程不完善，教我怎么部署数据库等内容，我希望各种部署方式都提供完整的部署教程
 - AI 原始输出：
 
-```bash
-# deploy/.env 配 PUBLIC_HOST / VENV_DIR；venv-setup + venv-start
+```md
+# 五种方式 A–E + DATABASE_URL/Postgres 建库步骤 + env 逐项说明
 ```
 
 - 采纳情况：全部采纳。

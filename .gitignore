@@ -30,3 +30,4 @@ Thumbs.db
 
 deploy/run/
 deploy/.env
+deploy/postgres.env

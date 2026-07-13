@@ -72,18 +72,17 @@ npm run dev    # http://localhost:3000
 
 > 前后端需**同时运行**。注册/登录后可在浏览器操作记账与提醒。
 
-## 🔑 环境变量
+## 🔑 环境变量（摘要）
+
+完整逐项说明 → [docs/部署教程.md](docs/部署教程.md) 第 2～3 节。
+
 | 变量 | 位置 | 说明 |
 |---|---|---|
-| DATABASE_URL | backend/.env | 本地留空→SQLite；线上 PostgreSQL |
-| AI_PROVIDER | backend/.env | `openai` 或 `anthropic`，默认 openai |
-| AI_API_KEY | backend/.env | API Key（也可用旧名 DEEPSEEK_API_KEY） |
-| AI_BASE_URL | backend/.env | 接口地址，默认 `https://api.openai.com/v1` |
-| AI_MODEL | backend/.env | 模型名，默认 `gpt-4o-mini` |
-| NOTIFY_DISPATCH_INTERVAL | backend/.env | 到期提醒后台扫描间隔秒数，默认 60；`0` 关闭 |
-| NOTIFY_CRON_SECRET | backend/.env | 可选，外部 cron 调推送接口用 |
-| JWT_SECRET | backend/.env | JWT 签名密钥 |
-| NEXT_PUBLIC_API_BASE | frontend/.env.local | 后端地址，默认 `http://localhost:5000` |
+| `SECRET_KEY` / `JWT_SECRET` | `backend/.env` | 上线必改随机串 |
+| `DATABASE_URL` | `backend/.env` | 留空→SQLite；Postgres 填连接串 |
+| `AI_*` | `backend/.env` | 可选，也可网页设置 |
+| `PUBLIC_HOST` | `deploy/.env` | 云服务器 venv：公网 IP |
+| `NEXT_PUBLIC_API_BASE` | `frontend/.env.local` | 本机开发指向后端 |
 
 ### 微信提醒（Server酱）绑定步骤
 1. 打开 https://sct.ftqq.com ，用**微信扫码登录**（无需下载 App）
@@ -97,59 +96,36 @@ npm run dev    # http://localhost:3000
 3. 点「发送测试弹窗」验证；到期待办约每 45 秒检查一次（需保持网页打开）
 
 ## 📦 部署
-推荐：**Python venv + npm**（改 `.env` 即可，无需 Docker）。可选 Docker Compose（见 `docker-compose.yml`）。
 
-## ☁️ 云服务器部署（从 GitHub 拉取 · venv）
+**完整教程（环境变量逐项说明 + 数据库安装 + 5 种上线方式）→ [docs/部署教程.md](docs/部署教程.md)**
 
-服务器需：公网 IP、已装 **Python3 / Node.js 18+ / git**，安全组放行 **3000、5000**（或前面再挂 Nginx 只开 80）。
+| 方式 | 一句话 |
+|------|--------|
+| A 本机 venv + SQLite | 开发默认 |
+| B 云服务器 venv + SQLite | 最快演示 |
+| C 云服务器 venv + PostgreSQL | 更稳 |
+| D Docker Compose + SQLite | 一键 `:80` |
+| E Docker Compose + PostgreSQL | 容器化正式 |
 
-```bash
-# 1. 克隆
-git clone https://github.com/YNT37/vita.git
-cd vita
-
-# 2. 部署配置：填公网 IP
-cp deploy/.env.example deploy/.env
-vim deploy/.env           # PUBLIC_HOST=你的公网IP
-
-# 3. 后端密钥 / AI（可沿用已有 venv：在 deploy/.env 设 VENV_DIR=/path/to/.venv）
-cp backend/.env.example backend/.env
-vim backend/.env          # SECRET_KEY、JWT_SECRET；可选 AI_API_KEY
-
-# 4. 装依赖并启动
-chmod +x deploy/*.sh
-./deploy/venv-setup.sh
-./deploy/venv-start.sh
-```
-
-之后更新代码：
+### 云服务器快速开始（方式 B）
 
 ```bash
-cd ~/vita
-./deploy/pull-and-up.sh    # git pull + 重装依赖 + 重启
+git clone https://github.com/YNT37/vita.git && cd vita
+cp deploy/.env.example deploy/.env && vim deploy/.env          # PUBLIC_HOST=公网IP
+cp backend/.env.example backend/.env && vim backend/.env      # SECRET_KEY / JWT_SECRET
+chmod +x deploy/*.sh && ./deploy/venv-setup.sh && ./deploy/venv-start.sh
 ```
 
-访问：
-- 前端 `http://<PUBLIC_HOST>:3000`
-- 后端 `http://<PUBLIC_HOST>:5000/api/health`
-
-```bash
-./deploy/venv-stop.sh      # 停止
-tail -f deploy/run/backend.log
-```
-
-> 若本机已有可用的 Python venv，在 `deploy/.env` 里设置 `VENV_DIR=/你的/venv路径`，setup 会直接往里装依赖，不再新建。
-
-### 可选：Docker Compose
-需已装 Docker。同域 80 端口反代见 `docker-compose.yml` 与旧版 `deploy/Caddyfile`。
+细节、Postgres 建库、Docker 命令见部署教程，勿只改 `.env.example` 注释。
 
 ## 🌐 线上地址
-- 一体部署：`http://<服务器公网IP>`
-- 前端 / 后端分拆：_待填_
+- 方式 B/C：`http://<公网IP>:3000`（API `:5000`）
+- 方式 D/E：`http://<公网IP>/`
 
 ## 📚 文档
 | 文档 | 说明 |
 |---|---|
+| [docs/部署教程.md](docs/部署教程.md) | **部署与数据库完整指南** |
 | [docs/需求文档.md](docs/需求文档.md) | 功能需求 FRD v1.1 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计 |
 | [docs/API文档.md](docs/API文档.md) | 接口契约 |
