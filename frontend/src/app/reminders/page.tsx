@@ -76,7 +76,7 @@ export default function RemindersPage() {
     try {
       const list = await apiFetch<Reminder[]>("/api/reminders");
       setItems(list);
-      apiFetch("/api/wxpusher/dispatch", { method: "POST", body: {} }).catch(() => {});
+      apiFetch("/api/serverchan/dispatch", { method: "POST", body: {} }).catch(() => {});
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "加载失败");
     } finally {

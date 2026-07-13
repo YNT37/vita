@@ -14,10 +14,9 @@ from services.user_settings import (
     set_user_ai_model,
     mask_api_key,
     resolve_ai_config,
-    get_wxpusher_uid,
-    mask_wxpusher_uid,
+    get_serverchan_sendkey,
+    mask_serverchan_sendkey,
 )
-from services.wxpusher_service import is_configured as wxpusher_configured
 
 settings_bp = Blueprint("settings", __name__, url_prefix="/api")
 
@@ -30,7 +29,7 @@ def _settings_payload(user_id: int):
     cfg = resolve_ai_config(user_id)
     provider = cfg["provider"]
     defaults = AI_PROVIDER_DEFAULTS[provider]
-    wx_uid = get_wxpusher_uid(user_id)
+    wx_key = get_serverchan_sendkey(user_id)
     return {
         "persona": get_persona(user_id),
         "persona_options": list(PERSONA_OPTIONS),
@@ -44,9 +43,8 @@ def _settings_payload(user_id: int):
         "ai_base_url_source": cfg["base_url_source"],
         "ai_model": cfg["model"] or defaults["model"],
         "ai_model_source": cfg["model_source"],
-        "wxpusher_configured": wxpusher_configured(),
-        "wxpusher_bound": bool(wx_uid),
-        "wxpusher_uid_hint": mask_wxpusher_uid(wx_uid),
+        "serverchan_bound": bool(wx_key),
+        "serverchan_key_hint": mask_serverchan_sendkey(wx_key),
     }
 
 

@@ -29,7 +29,7 @@ def create_app(config_class=Config):
     from blueprints.settings import settings_bp
     from blueprints.categories import categories_bp
     from blueprints.overview import overview_bp
-    from blueprints.wxpusher import wxpusher_bp
+    from blueprints.serverchan import serverchan_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(me_bp)
@@ -39,7 +39,7 @@ def create_app(config_class=Config):
     app.register_blueprint(settings_bp)
     app.register_blueprint(categories_bp)
     app.register_blueprint(overview_bp)
-    app.register_blueprint(wxpusher_bp)
+    app.register_blueprint(serverchan_bp)
 
     register_error_handlers(app)
     register_jwt_error_handlers(jwt)
@@ -88,17 +88,15 @@ def _ensure_schema():
 
 
 def _start_dispatch_loop(app: Flask):
-    """后台定时推送到期提醒（需配置 WXPUSHER_APP_TOKEN）。"""
+    """后台定时推送到期提醒（用户已绑定 Server酱 SendKey 时生效）。"""
     global _dispatch_thread
-    interval = int(app.config.get("WXPUSHER_DISPATCH_INTERVAL") or 0)
-    token = (app.config.get("WXPUSHER_APP_TOKEN") or "").strip()
-    if interval <= 0 or not token:
+    interval = int(app.config.get("NOTIFY_DISPATCH_INTERVAL") or 0)
+    if interval <= 0:
         return
     if _dispatch_thread and _dispatch_thread.is_alive():
         return
 
     def _loop():
-        # 启动稍等，避免阻塞启动
         time.sleep(min(15, interval))
         while not _dispatch_stop.is_set():
             try:
@@ -107,12 +105,12 @@ def _start_dispatch_loop(app: Flask):
 
                     result = dispatch_due_reminders()
                     if result.get("sent"):
-                        logger.info("WxPusher dispatch sent=%s", result.get("sent"))
+                        logger.info("notify dispatch sent=%s", result.get("sent"))
             except Exception as e:
-                logger.warning("WxPusher dispatch error: %s", e)
+                logger.warning("notify dispatch error: %s", e)
             _dispatch_stop.wait(interval)
 
-    _dispatch_thread = threading.Thread(target=_loop, name="wxpusher-dispatch", daemon=True)
+    _dispatch_thread = threading.Thread(target=_loop, name="notify-dispatch", daemon=True)
     _dispatch_thread.start()
 
     def _stop():

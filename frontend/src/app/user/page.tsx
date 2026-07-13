@@ -7,7 +7,7 @@ import { useAuth, type User } from "@/lib/auth";
 import { useAutoReload } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
 import { PageContainer } from "@/components/PageContainer";
-import { WxPusherBind } from "@/components/WxPusherBind";
+import { ServerChanBind } from "@/components/ServerChanBind";
 import { type PersonaId, PERSONA_LABELS } from "@/lib/persona";
 
 type OverviewBrief = {
@@ -281,7 +281,7 @@ export default function UserPage() {
             </Link>
           </section>
 
-          <WxPusherBind />
+          <ServerChanBind />
           </div>
 
           <div className="space-y-4">

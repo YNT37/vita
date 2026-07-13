@@ -38,9 +38,11 @@ class Config:
 
     CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
 
-    # WxPusher 微信推送（https://wxpusher.zjiecode.com）
-    WXPUSHER_APP_TOKEN = os.getenv("WXPUSHER_APP_TOKEN", "").strip()
-    # 后台扫描到期提醒间隔（秒），0 表示关闭后台线程
-    WXPUSHER_DISPATCH_INTERVAL = int(os.getenv("WXPUSHER_DISPATCH_INTERVAL", "60"))
-    # 可选：外部 cron 调用 /api/wxpusher/dispatch 时的密钥
-    WXPUSHER_CRON_SECRET = os.getenv("WXPUSHER_CRON_SECRET", "").strip()
+    # 到期提醒推送（Server酱，用户各自绑定 SendKey，无需服务器 Token）
+    # 兼容旧变量名 WXPUSHER_DISPATCH_INTERVAL / WXPUSHER_CRON_SECRET
+    NOTIFY_DISPATCH_INTERVAL = int(
+        os.getenv("NOTIFY_DISPATCH_INTERVAL", os.getenv("WXPUSHER_DISPATCH_INTERVAL", "60"))
+    )
+    NOTIFY_CRON_SECRET = (
+        os.getenv("NOTIFY_CRON_SECRET") or os.getenv("WXPUSHER_CRON_SECRET") or ""
+    ).strip()

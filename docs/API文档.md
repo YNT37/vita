@@ -74,15 +74,12 @@
 - `POST /api/ai/parse` `{text}` → `{intent,data,actions?}`（仅解析，不写入）
 - `POST /api/ai/brief` → `{text}`
 
-### WxPusher 微信提醒（需配置 `WXPUSHER_APP_TOKEN`）
+### Server酱 微信提醒（用户自备 SendKey，服务器无需 Token）
 
-- `GET /api/wxpusher/status` → `{configured,bound,uid_hint}`
-- `POST /api/wxpusher/uid` `{uid}` → 绑定/清空 UID（空串解绑）
-- `POST /api/wxpusher/bind-qrcode` → `{code,url,poll_interval_sec}` 扫码绑定
-- `GET /api/wxpusher/bind-poll?code=` → 轮询扫码 UID（间隔 ≥10s）并自动绑定
-- `POST /api/wxpusher/test` → 发送测试消息
-- `POST /api/wxpusher/dispatch` → 扫描到期提醒并推送（JWT 或 Header `X-Cron-Secret`）
-- `POST /api/wxpusher/callback` → 关注回调（可选，无需 JWT）
+- `GET /api/serverchan/status` → `{bound,key_hint,bind_help_url}`
+- `POST /api/serverchan/key` `{sendkey}` → 绑定/清空（空串解绑）
+- `POST /api/serverchan/test` → 发送测试消息
+- `POST /api/serverchan/dispatch` → 扫描到期提醒并推送（JWT 或 Header `X-Cron-Secret`）
 
 健壮性：AI 空输入/超时/Key 失效/非法返回 → 降级文案，绝不 500。
 

@@ -330,6 +330,7 @@ def resolve_ai_config(user_id: int) -> dict:
 
 
 WXPUSHER_UID = "wxpusher_uid"
+SERVERCHAN_SENDKEY = "serverchan_sendkey"
 
 
 def get_wxpusher_uid(user_id: int) -> str | None:
@@ -338,9 +339,6 @@ def get_wxpusher_uid(user_id: int) -> str | None:
 
 def set_wxpusher_uid(user_id: int, uid: str | None) -> None:
     text = (uid or "").strip()
-    if text and not text.upper().startswith("UID_"):
-        # 允许用户粘贴不带前缀的情况，尽量原样保存；官方格式为 UID_
-        pass
     _set_setting(user_id, WXPUSHER_UID, text if text else None)
     db.session.commit()
 
@@ -351,4 +349,22 @@ def mask_wxpusher_uid(uid: str | None) -> str | None:
     if len(uid) <= 8:
         return "****"
     return f"{uid[:4]}...{uid[-4:]}"
+
+
+def get_serverchan_sendkey(user_id: int) -> str | None:
+    return _get_setting(user_id, SERVERCHAN_SENDKEY)
+
+
+def set_serverchan_sendkey(user_id: int, sendkey: str | None) -> None:
+    text = (sendkey or "").strip()
+    _set_setting(user_id, SERVERCHAN_SENDKEY, text if text else None)
+    db.session.commit()
+
+
+def mask_serverchan_sendkey(sendkey: str | None) -> str | None:
+    if not sendkey:
+        return None
+    if len(sendkey) <= 8:
+        return "****"
+    return f"{sendkey[:4]}...{sendkey[-4:]}"
 

@@ -578,3 +578,17 @@ POST /api/wxpusher/dispatch
 ```
 
 - 采纳情况：全部采纳。
+
+---
+
+### #26 · 2026-07-13 · Cursor(Grok) · 微信推送改用 Server酱
+- 对应功能/文件：`serverchan_service.py`、`blueprints/serverchan.py`、`ServerChanBind.tsx`；移除 WxPusher
+- Prompt：
+  > WxPusher需要下载app才能用，不方便 → 选 Server酱
+- AI 原始输出：
+
+```python
+# 用户粘贴 SCT SendKey；POST sctapi.ftqq.com/{key}.send
+```
+
+- 采纳情况：全部采纳。无需服务器 appToken，微信扫码即可。
