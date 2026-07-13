@@ -473,3 +473,19 @@ setMessages(res.messages);
 ```
 
 - 采纳情况：全部采纳。对话按角色分库存储，切页回来自动加载。
+
+---
+
+### #18 · 2026-07-13 · Cursor(Claude) · 批量财务写入防编造
+- 对应功能/文件：`backend/services/ai_service.py`、`prompts.py`、`blueprints/ai.py`；`frontend/src/app/page.tsx`、`lib/persona.ts`
+- Prompt：
+  > AI 有记录数据但是统计、记账、提醒都没数据（基金/微信/建行/工行 + 花呗/白条）
+- AI 原始输出：
+
+```python
+# intent=batch + actions[] 一次写入多账户余额与还款提醒
+# 多账户汇报优先规则提取，禁止仅凭聊天记录复述未入库数字
+actions = _regex_extract_batch(text)  # 基金/微信/... + 花呗还款提醒
+```
+
+- 采纳情况：全部采纳。根因是 AI 闲聊复述未落库；现支持批量写入并强制以系统数据为准。

@@ -159,9 +159,9 @@ def ai_chat():
 
         raise ApiError("invalid_message", "消息不能为空", 400, "message")
 
-    if len(message) > 500:
+    if len(message) > 1000:
 
-        raise ApiError("invalid_message", "消息不超过500字", 400, "message")
+        raise ApiError("invalid_message", "消息不超过1000字", 400, "message")
 
 
 

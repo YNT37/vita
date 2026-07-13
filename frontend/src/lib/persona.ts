@@ -9,9 +9,15 @@ export const PERSONA_LABELS: Record<PersonaId, string> = {
 
 export const PERSONA_OPTIONS: PersonaId[] = ["butler", "servant", "sassy", "lover"];
 
-export type ParseResult = {
-  intent: "transaction" | "reminder" | "balance" | "unknown";
+export type ParseAction = {
+  intent: "transaction" | "reminder" | "balance";
   data: Record<string, unknown>;
+};
+
+export type ParseResult = {
+  intent: "transaction" | "reminder" | "balance" | "batch" | "unknown";
+  data: Record<string, unknown>;
+  actions?: ParseAction[];
 };
 
 export type ChatMsg = { role: "user" | "assistant"; content: string };

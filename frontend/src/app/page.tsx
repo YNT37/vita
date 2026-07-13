@@ -131,12 +131,18 @@ export default function HomePage() {
     setError("");
     setConfirming(true);
     try {
-      if (parseResult.intent === "transaction") {
-        await apiFetch("/api/transactions", { method: "POST", body: parseResult.data });
-      } else if (parseResult.intent === "reminder") {
-        await apiFetch("/api/reminders", { method: "POST", body: parseResult.data });
-      } else if (parseResult.intent === "balance") {
-        await apiFetch("/api/assets", { method: "POST", body: parseResult.data });
+      const items =
+        parseResult.intent === "batch"
+          ? parseResult.actions || []
+          : [{ intent: parseResult.intent, data: parseResult.data }];
+      for (const item of items) {
+        if (item.intent === "transaction") {
+          await apiFetch("/api/transactions", { method: "POST", body: item.data });
+        } else if (item.intent === "reminder") {
+          await apiFetch("/api/reminders", { method: "POST", body: item.data });
+        } else if (item.intent === "balance") {
+          await apiFetch("/api/assets", { method: "POST", body: item.data });
+        }
       }
       setParseInput("");
       setParseResult(null);
@@ -270,7 +276,9 @@ export default function HomePage() {
                       ? "记账"
                       : parseResult.intent === "reminder"
                         ? "提醒"
-                        : "资产余额"}
+                        : parseResult.intent === "batch"
+                          ? `批量 ${parseResult.actions?.length || 0} 项`
+                          : "资产余额"}
                   </strong>
                   {parseResult.intent === "balance" && (
                     <span className="text-gray-500 ml-1">
@@ -278,6 +286,19 @@ export default function HomePage() {
                     </span>
                   )}
                 </p>
+                {parseResult.intent === "batch" && parseResult.actions && (
+                  <ul className="text-xs text-gray-500 mb-2 space-y-0.5">
+                    {parseResult.actions.map((a, i) => (
+                      <li key={i}>
+                        {a.intent === "balance"
+                          ? `账户 ${String(a.data.name)} ${String(a.data.balance)} 元`
+                          : a.intent === "reminder"
+                            ? `提醒 ${String(a.data.title)}`
+                            : `记账 ${String(a.data.amount)}`}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <button
                   type="button"
                   onClick={confirmParse}
