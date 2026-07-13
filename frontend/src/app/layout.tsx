@@ -4,6 +4,7 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
 import { DataRefreshProvider } from "@/lib/data-refresh";
 import { AppShell } from "@/components/AppShell";
+import { BrowserNotifyProvider } from "@/components/BrowserNotifyProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -43,7 +44,9 @@ export default function RootLayout({
       <body className="min-h-dvh flex flex-col">
         <AuthProvider>
           <DataRefreshProvider>
-            <AppShell>{children}</AppShell>
+            <BrowserNotifyProvider>
+              <AppShell>{children}</AppShell>
+            </BrowserNotifyProvider>
           </DataRefreshProvider>
         </AuthProvider>
       </body>

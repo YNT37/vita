@@ -592,3 +592,17 @@ POST /api/wxpusher/dispatch
 ```
 
 - 采纳情况：全部采纳。无需服务器 appToken，微信扫码即可。
+
+---
+
+### #27 · 2026-07-13 · Cursor(Grok) · 浏览器弹窗提醒
+- 对应功能/文件：`browser-notify.ts`、`BrowserNotifyProvider.tsx`、`BrowserNotifyBind.tsx`、`user/page.tsx`
+- Prompt：
+  > 要不还是浏览器弹窗吧
+- AI 原始输出：
+
+```tsx
+// Notification API；登录后轮询到期提醒；Server酱收进可选折叠
+```
+
+- 采纳情况：全部采纳。

@@ -9,7 +9,7 @@ type ScStatus = {
   bind_help_url?: string;
 };
 
-export function ServerChanBind() {
+export function ServerChanBind({ plain = false }: { plain?: boolean }) {
   const [status, setStatus] = useState<ScStatus | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [msg, setMsg] = useState("");
@@ -102,23 +102,29 @@ export function ServerChanBind() {
     }
   }
 
+  const wrapClass = plain
+    ? "space-y-3 mt-1"
+    : "rounded-2xl border border-black/10 dark:border-white/15 p-4 space-y-3";
+
   if (!status) {
     return (
-      <section className="rounded-2xl border border-black/10 dark:border-white/15 p-4 space-y-2">
+      <div className={plain ? "space-y-2" : "rounded-2xl border border-black/10 dark:border-white/15 p-4 space-y-2"}>
         <p className="text-sm text-gray-500">加载微信提醒…</p>
         {err && <p className="text-sm text-red-500">{err}</p>}
-      </section>
+      </div>
     );
   }
 
   return (
-    <section className="rounded-2xl border border-black/10 dark:border-white/15 p-4 space-y-3">
-      <div>
-        <h2 className="text-sm font-medium">微信提醒（Server酱）</h2>
-        <p className="text-xs text-gray-400 mt-1">
-          微信扫码拿 SendKey 即可，无需下载额外 App
-        </p>
-      </div>
+    <div className={wrapClass}>
+      {!plain && (
+        <div>
+          <h2 className="text-sm font-medium">微信提醒（Server酱）</h2>
+          <p className="text-xs text-gray-400 mt-1">
+            微信扫码拿 SendKey 即可，无需下载额外 App
+          </p>
+        </div>
+      )}
 
       <ol className="text-xs text-gray-500 list-decimal pl-4 space-y-1">
         <li>
@@ -197,6 +203,6 @@ export function ServerChanBind() {
 
       {msg && <p className="text-sm text-green-600">{msg}</p>}
       {err && <p className="text-sm text-red-500">{err}</p>}
-    </section>
+    </div>
   );
 }

@@ -7,6 +7,7 @@ import { useAuth, type User } from "@/lib/auth";
 import { useAutoReload } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
 import { PageContainer } from "@/components/PageContainer";
+import { BrowserNotifyBind } from "@/components/BrowserNotifyBind";
 import { ServerChanBind } from "@/components/ServerChanBind";
 import { type PersonaId, PERSONA_LABELS } from "@/lib/persona";
 
@@ -281,7 +282,17 @@ export default function UserPage() {
             </Link>
           </section>
 
-          <ServerChanBind />
+          <BrowserNotifyBind />
+
+          <details className="rounded-2xl border border-black/10 dark:border-white/15 p-4">
+            <summary className="text-sm font-medium cursor-pointer select-none">
+              可选：微信推送（Server酱）
+            </summary>
+            <p className="text-xs text-gray-400 mt-2 mb-3">
+              浏览器弹窗更方便；Server酱适合网页关掉后仍想收微信消息。
+            </p>
+            <ServerChanBind plain />
+          </details>
           </div>
 
           <div className="space-y-4">
