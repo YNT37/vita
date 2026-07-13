@@ -1,17 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useAutoReload, useDataRefresh } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
 import { PageContainer } from "@/components/PageContainer";
 import {
+  ConfirmCard,
+  draftToBody,
+  pendingToCard,
+  type ConfirmCardState,
+  type ConfirmDraft,
+  type PendingAction,
+} from "@/components/ConfirmCard";
+import {
   type PersonaId,
   type ChatMsg,
-  type ParseResult,
   PERSONA_LABELS,
 } from "@/lib/persona";
+
+type TimelineItem =
+  | { kind: "msg"; id: string; role: "user" | "assistant"; content: string }
+  | { kind: "confirm"; id: string };
+
+let seq = 0;
+function nextId(prefix: string) {
+  seq += 1;
+  return `${prefix}-${Date.now()}-${seq}`;
+}
 
 export default function HomePage() {
   const { user, loading: authLoading } = useAuth();
@@ -22,16 +39,14 @@ export default function HomePage() {
   const [brief, setBrief] = useState("");
   const [briefLoading, setBriefLoading] = useState(false);
 
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+  const [cards, setCards] = useState<Record<string, ConfirmCardState>>({});
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
-
-  const [parseInput, setParseInput] = useState("");
-  const [parseResult, setParseResult] = useState<ParseResult | null>(null);
-  const [parseLoading, setParseLoading] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const [error, setError] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
@@ -40,7 +55,15 @@ export default function HomePage() {
   const loadHistory = useCallback(async () => {
     try {
       const res = await apiFetch<{ messages: ChatMsg[] }>("/api/ai/chat/history");
-      setMessages(res.messages);
+      setTimeline(
+        res.messages.map((m, i) => ({
+          kind: "msg" as const,
+          id: `hist-${i}-${m.role}`,
+          role: m.role,
+          content: m.content,
+        }))
+      );
+      setCards({});
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "对话记录加载失败");
     }
@@ -74,10 +97,15 @@ export default function HomePage() {
 
   const reloadHome = useCallback(async () => {
     if (!user) return;
-    await Promise.all([loadBrief(), loadHistory()]);
-  }, [user, loadBrief, loadHistory]);
+    await loadBrief();
+  }, [user, loadBrief]);
 
   useAutoReload(reloadHome, !!user);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [timeline, cards]);
 
   async function sendChat(e: React.FormEvent) {
     e.preventDefault();
@@ -86,21 +114,41 @@ export default function HomePage() {
     setError("");
     setChatSending(true);
     setChatInput("");
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    const userItem: TimelineItem = {
+      kind: "msg",
+      id: nextId("u"),
+      role: "user",
+      content: text,
+    };
+    setTimeline((prev) => [...prev, userItem]);
     try {
       const res = await apiFetch<{
         reply: string;
-        action?: string | null;
-        wrote?: boolean;
+        pending?: PendingAction[];
       }>("/api/ai/chat", {
         method: "POST",
         body: { message: text },
       });
-      setMessages((prev) => [...prev, { role: "assistant", content: res.reply }]);
-      if (res.action || res.wrote) {
-        bump();
-        await loadBrief();
-      }
+      const assistantItem: TimelineItem = {
+        kind: "msg",
+        id: nextId("a"),
+        role: "assistant",
+        content: res.reply,
+      };
+      const pending = Array.isArray(res.pending) ? res.pending : [];
+      const newCards: ConfirmCardState[] = pending.map((p) =>
+        pendingToCard(p, nextId("c"))
+      );
+      setCards((prev) => {
+        const next = { ...prev };
+        for (const c of newCards) next[c.id] = c;
+        return next;
+      });
+      setTimeline((prev) => [
+        ...prev,
+        assistantItem,
+        ...newCards.map((c) => ({ kind: "confirm" as const, id: c.id })),
+      ]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "发送失败");
     } finally {
@@ -108,52 +156,55 @@ export default function HomePage() {
     }
   }
 
-  async function doParse(e: React.FormEvent) {
-    e.preventDefault();
-    const text = parseInput.trim();
-    if (!text) return;
-    setError("");
-    setParseLoading(true);
-    setParseResult(null);
-    try {
-      const res = await apiFetch<ParseResult>("/api/ai/parse", {
-        method: "POST",
-        body: { text },
-      });
-      setParseResult(res);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "解析失败");
-    } finally {
-      setParseLoading(false);
-    }
+  function updateCardDraft(id: string, draft: ConfirmDraft) {
+    setCards((prev) => {
+      const cur = prev[id];
+      if (!cur || cur.status !== "pending") return prev;
+      return { ...prev, [id]: { ...cur, draft } };
+    });
   }
 
-  async function confirmParse() {
-    if (!parseResult || parseResult.intent === "unknown") return;
+  function dismissCard(id: string) {
+    setCards((prev) => {
+      const cur = prev[id];
+      if (!cur) return prev;
+      return { ...prev, [id]: { ...cur, status: "dismissed" } };
+    });
+  }
+
+  async function confirmCard(id: string) {
+    const card = cards[id];
+    if (!card || card.status !== "pending") return;
     setError("");
-    setConfirming(true);
+    setConfirmBusy(true);
     try {
-      const items =
-        parseResult.intent === "batch"
-          ? parseResult.actions || []
-          : [{ intent: parseResult.intent, data: parseResult.data }];
-      for (const item of items) {
-        if (item.intent === "transaction") {
-          await apiFetch("/api/transactions", { method: "POST", body: item.data });
-        } else if (item.intent === "reminder") {
-          await apiFetch("/api/reminders", { method: "POST", body: item.data });
-        } else if (item.intent === "balance") {
-          await apiFetch("/api/assets", { method: "POST", body: item.data });
+      const body = draftToBody(card);
+      if (card.intent === "transaction") {
+        if (!body.amount || Number(body.amount) <= 0) {
+          throw new Error("请填写有效金额");
         }
+        await apiFetch("/api/transactions", { method: "POST", body });
+      } else if (card.intent === "reminder") {
+        if (!String(body.title || "").trim()) {
+          throw new Error("请填写提醒标题");
+        }
+        await apiFetch("/api/reminders", { method: "POST", body });
+      } else {
+        if (!String(body.name || "").trim()) {
+          throw new Error("请填写账户名");
+        }
+        await apiFetch("/api/assets", { method: "POST", body });
       }
-      setParseInput("");
-      setParseResult(null);
+      setCards((prev) => ({
+        ...prev,
+        [id]: { ...prev[id], status: "done" },
+      }));
       bump();
       await loadBrief();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "写入失败");
+      setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "写入失败");
     } finally {
-      setConfirming(false);
+      setConfirmBusy(false);
     }
   }
 
@@ -162,198 +213,6 @@ export default function HomePage() {
       <main className="flex-1 grid place-items-center text-gray-500">加载中…</main>
     );
   }
-
-  const briefBlock = (
-    <section className="rounded-2xl border border-black/10 dark:border-white/15 p-3 sm:p-4 shrink-0">
-      <div className="flex items-center justify-between mb-1">
-        <h2 className="text-sm font-medium text-gray-500">今日播报</h2>
-        <button
-          type="button"
-          onClick={loadBrief}
-          disabled={briefLoading}
-          className="text-xs text-blue-600 hover:underline disabled:opacity-50"
-        >
-          {briefLoading ? "刷新中…" : "刷新"}
-        </button>
-      </div>
-      <p className="text-sm leading-relaxed whitespace-pre-wrap">
-        {briefLoading && !brief ? "加载中…" : brief || "暂无播报"}
-      </p>
-    </section>
-  );
-
-  const parseBlock = (
-    <section className="rounded-2xl border border-black/10 dark:border-white/15 p-3 sm:p-4 shrink-0">
-      <div className="mb-2">
-        <h2 className="text-sm font-medium text-gray-500">录入确认</h2>
-        <p className="text-xs text-gray-400 mt-0.5">
-          先让 AI 理解你的话，核对无误后再写入
-        </p>
-      </div>
-      <form onSubmit={doParse} className="flex flex-col sm:flex-row gap-2 mb-2">
-        <input
-          className="flex-1 min-w-0 rounded-lg border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500"
-          value={parseInput}
-          onChange={(e) => setParseInput(e.target.value)}
-          placeholder="例如：午饭花了30 / 基金余额1901 / 提醒我明天还花呗"
-          disabled={parseLoading}
-        />
-        <button
-          type="submit"
-          disabled={parseLoading || !parseInput.trim()}
-          className="rounded-lg border border-black/15 px-3 py-2 text-sm hover:bg-black/5 disabled:opacity-60 shrink-0"
-        >
-          {parseLoading ? "理解中…" : "理解一下"}
-        </button>
-      </form>
-      {parseResult && (
-        <div className="rounded-xl bg-black/5 dark:bg-white/10 p-3 text-sm space-y-2">
-          {parseResult.intent === "unknown" ? (
-            <>
-              <p className="text-amber-600 dark:text-amber-400">
-                AI 没听懂这句，请换个说法，或到记账/提醒页手动填写。
-              </p>
-              <button
-                type="button"
-                onClick={() => setParseResult(null)}
-                className="text-xs text-gray-500 hover:underline"
-              >
-                关闭
-              </button>
-            </>
-          ) : (
-            <>
-              <p className="text-xs text-gray-400">AI 的理解是：</p>
-              <div className="rounded-lg border border-black/10 dark:border-white/15 bg-[var(--background)] px-3 py-2">
-                <p className="mb-1">
-                  <span className="text-xs text-gray-400 mr-1">类型</span>
-                  <strong>
-                    {parseResult.intent === "transaction"
-                      ? "记账"
-                      : parseResult.intent === "reminder"
-                        ? "提醒"
-                        : parseResult.intent === "batch"
-                          ? `批量 ${parseResult.actions?.length || 0} 项`
-                          : "资产余额"}
-                  </strong>
-                </p>
-                {parseResult.intent === "transaction" && (
-                  <p className="text-gray-600 dark:text-gray-300">
-                    {String(parseResult.data.type === "income" ? "收入" : "支出")}{" "}
-                    ¥{String(parseResult.data.amount ?? "")}
-                    {parseResult.data.category
-                      ? ` · ${String(parseResult.data.category)}`
-                      : ""}
-                    {parseResult.data.note
-                      ? ` · ${String(parseResult.data.note)}`
-                      : ""}
-                    {parseResult.data.date
-                      ? ` · ${String(parseResult.data.date)}`
-                      : ""}
-                  </p>
-                )}
-                {parseResult.intent === "reminder" && (
-                  <p className="text-gray-600 dark:text-gray-300">
-                    {String(parseResult.data.title ?? "提醒")}
-                    {parseResult.data.due_at
-                      ? ` · ${String(parseResult.data.due_at)}`
-                      : ""}
-                    {parseResult.data.type
-                      ? ` · ${String(parseResult.data.type)}`
-                      : ""}
-                  </p>
-                )}
-                {parseResult.intent === "balance" && (
-                  <p className="text-gray-600 dark:text-gray-300">
-                    {String(parseResult.data.name ?? "资产")} →{" "}
-                    {String(parseResult.data.balance ?? "")} 元
-                    {parseResult.data.kind === "liability" ? "（负债）" : ""}
-                  </p>
-                )}
-                {parseResult.intent === "batch" && parseResult.actions && (
-                  <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-0.5 mt-1">
-                    {parseResult.actions.map((a, i) => (
-                      <li key={i}>
-                        {a.intent === "balance"
-                          ? `账户 ${String(a.data.name)} ${String(a.data.balance)} 元`
-                          : a.intent === "reminder"
-                            ? `提醒 ${String(a.data.title)}`
-                            : `记账 ${String(a.data.amount)}`}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={confirmParse}
-                  disabled={confirming}
-                  className="rounded-lg bg-green-600 text-white px-3 py-1.5 text-sm hover:bg-green-700 disabled:opacity-60"
-                >
-                  {confirming ? "写入中…" : "理解正确，写入"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setParseResult(null)}
-                  disabled={confirming}
-                  className="rounded-lg border border-black/15 dark:border-white/20 px-3 py-1.5 text-sm text-gray-500 hover:bg-black/5 disabled:opacity-60"
-                >
-                  理解错了
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </section>
-  );
-
-  const chatBlock = (
-    <section className="rounded-2xl border border-black/10 dark:border-white/15 flex flex-col flex-1 min-h-[280px] sm:min-h-[320px] lg:min-h-0 overflow-hidden">
-      <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-2 min-h-0">
-        {messages.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-6">和管家说点什么吧～</p>
-        ) : (
-          messages.map((m, i) => (
-            <div
-              key={i}
-              className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-3 py-2 text-sm break-words ${
-                  m.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-black/5 dark:bg-white/10"
-                }`}
-              >
-                {m.content}
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-      <form
-        onSubmit={sendChat}
-        className="p-2 sm:p-3 border-t border-black/10 dark:border-white/15 flex gap-2 shrink-0"
-      >
-        <input
-          className="flex-1 min-w-0 rounded-lg border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500"
-          value={chatInput}
-          onChange={(e) => setChatInput(e.target.value)}
-          placeholder="输入消息…"
-          disabled={chatSending}
-        />
-        <button
-          type="submit"
-          disabled={chatSending || !chatInput.trim()}
-          className="rounded-lg bg-blue-600 text-white px-3 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-60 shrink-0"
-        >
-          发送
-        </button>
-      </form>
-    </section>
-  );
 
   return (
     <PageContainer wide className="flex flex-col min-h-0 md:min-h-full lg:h-full">
@@ -377,13 +236,92 @@ export default function HomePage() {
         </p>
       )}
 
-      <div className="flex flex-col gap-3 flex-1 min-h-0 lg:grid lg:grid-cols-[minmax(260px,0.9fr)_minmax(0,1.2fr)] lg:gap-4 lg:items-stretch">
-        <div className="flex flex-col gap-3 order-1 lg:order-none lg:overflow-y-auto lg:min-h-0">
-          {briefBlock}
-          <div className="hidden lg:block">{parseBlock}</div>
-        </div>
-        <div className="flex flex-col flex-1 min-h-0 order-2 lg:order-none">{chatBlock}</div>
-        <div className="order-3 lg:hidden">{parseBlock}</div>
+      <div className="flex flex-col gap-3 flex-1 min-h-0 lg:grid lg:grid-cols-[minmax(240px,0.75fr)_minmax(0,1.35fr)] lg:gap-4 lg:items-stretch">
+        <section className="rounded-2xl border border-black/10 dark:border-white/15 p-3 sm:p-4 shrink-0 lg:overflow-y-auto lg:min-h-0">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-medium text-gray-500">今日播报</h2>
+            <button
+              type="button"
+              onClick={loadBrief}
+              disabled={briefLoading}
+              className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+            >
+              {briefLoading ? "刷新中…" : "刷新"}
+            </button>
+          </div>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            {briefLoading && !brief ? "加载中…" : brief || "暂无播报"}
+          </p>
+          <p className="text-xs text-gray-400 mt-3">
+            记账、提醒请直接和管家说；对话里会弹出可编辑确认卡，点「确定」后才写入。
+          </p>
+        </section>
+
+        <section className="rounded-2xl border border-black/10 dark:border-white/15 flex flex-col flex-1 min-h-[320px] lg:min-h-0 overflow-hidden">
+          <div
+            ref={scrollRef}
+            className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-3 min-h-0"
+          >
+            {timeline.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">
+                试试：「中午吃饭花了20」或「记得提醒我明天还花呗」
+              </p>
+            ) : (
+              timeline.map((item) => {
+                if (item.kind === "confirm") {
+                  const card = cards[item.id];
+                  if (!card || card.status === "dismissed") return null;
+                  return (
+                    <div key={item.id} className="flex justify-start">
+                      <ConfirmCard
+                        card={card}
+                        busy={confirmBusy}
+                        onChange={updateCardDraft}
+                        onConfirm={confirmCard}
+                        onDismiss={dismissCard}
+                      />
+                    </div>
+                  );
+                }
+                return (
+                  <div
+                    key={item.id}
+                    className={`flex ${item.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[90%] sm:max-w-[80%] rounded-2xl px-3 py-2 text-sm break-words ${
+                        item.role === "user"
+                          ? "bg-blue-600 text-white"
+                          : "bg-black/5 dark:bg-white/10"
+                      }`}
+                    >
+                      {item.content}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <form
+            onSubmit={sendChat}
+            className="p-2 sm:p-3 border-t border-black/10 dark:border-white/15 flex gap-2 shrink-0"
+          >
+            <input
+              className="flex-1 min-w-0 rounded-lg border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              placeholder="和管家说说记账或提醒…"
+              disabled={chatSending}
+            />
+            <button
+              type="submit"
+              disabled={chatSending || !chatInput.trim()}
+              className="rounded-lg bg-blue-600 text-white px-3 py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-60 shrink-0"
+            >
+              发送
+            </button>
+          </form>
+        </section>
       </div>
     </PageContainer>
   );

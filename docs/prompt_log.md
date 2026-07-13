@@ -563,3 +563,17 @@ await apiFetch(`/api/assets/${id}`, { method: "PATCH", body: { name, balance, ki
 ```
 
 - 采纳情况：全部采纳。
+
+---
+
+### #24 · 2026-07-13 · Cursor(Grok) · 对话内可编辑确认卡片
+- 对应功能/文件：`frontend/src/app/page.tsx`、`components/ConfirmCard.tsx`；`backend/blueprints/ai.py`、`services/ai_service.py`
+- Prompt：
+  > 和 AI 说中午吃饭花了20就弹出确认卡片；提醒又弹一条；卡片可编辑，点确定才上传
+- AI 原始输出：
+
+```tsx
+// chat 返回 pending[]，不自动落库；每条 pending 渲染可编辑 ConfirmCard
+```
+
+- 采纳情况：全部采纳。

@@ -6,7 +6,7 @@ from models import ChatMessage
 from errors import ApiError
 from services.ai_service import (
     answer_query,
-    execute_intent,
+    extract_pending_actions,
     generate_brief,
     generate_chat_reply,
     parse_input,
@@ -112,12 +112,8 @@ def ai_chat():
         topic = (understanding.get("data") or {}).get("topic", "overview")
         query_answer = answer_query(topic, context)
 
-    action_note = execute_intent(uid, understanding)
-    if action_note:
-        context = build_user_context(uid)
-        if understanding.get("intent") == "query":
-            topic = (understanding.get("data") or {}).get("topic", "overview")
-            query_answer = answer_query(topic, context)
+    # 写入类意图不自动落库，交由前端确认卡片上传
+    pending = extract_pending_actions(understanding)
 
     reply = generate_chat_reply(
         persona,
@@ -126,8 +122,9 @@ def ai_chat():
         ai_config=ai_cfg,
         context=context,
         understanding=understanding,
-        action_note=action_note,
+        action_note=None,
         query_answer=query_answer,
+        pending_count=len(pending),
     )
 
     db.session.add(ChatMessage(user_id=uid, role="user", content=message, persona=persona))
@@ -136,9 +133,10 @@ def ai_chat():
 
     return jsonify({
         "reply": reply,
-        "action": action_note,
+        "action": None,
         "intent": understanding.get("intent"),
-        "wrote": bool(action_note),
+        "wrote": False,
+        "pending": pending,
     }), 200
 
 

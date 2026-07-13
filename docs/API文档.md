@@ -69,8 +69,10 @@
 - `POST /api/settings` `{persona?,ai_provider?,ai_api_key?,ai_base_url?,ai_model?}` → 同上（传空字符串可清除用户侧配置）
 - `ai_provider`：`openai`（需 Key+Base URL+Model）或 `anthropic`（需 Key+Model，Base URL 可选）
 - `GET /api/ai/chat/history?limit=50` → `{persona,messages:[{role,content}]}`
-- `POST /api/ai/chat` `{message}` → `{reply,action?,intent?}`；自动理解意图（查询/记账/余额/提醒/闲聊）并执行可写操作
-- `POST /api/ai/parse` `{text}` → `{intent:"transaction|reminder|balance|unknown", data:{...}}`
+- `POST /api/ai/chat` `{message}` → `{reply,intent?,pending:[{intent,data}],wrote:false}`  
+  理解意图后**不自动写入**；`pending` 为待确认项（transaction / reminder / balance），由前端确认卡片编辑后调用对应业务 API 写入。
+- `POST /api/ai/parse` `{text}` → `{intent,data,actions?}`（仅解析，不写入）
+- `POST /api/ai/brief` → `{text}`
 
 健壮性：AI 空输入/超时/Key 失效/非法返回 → 降级文案，绝不 500。
 

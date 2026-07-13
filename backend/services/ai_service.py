@@ -683,6 +683,25 @@ def execute_intent(user_id: int, understanding: dict) -> str | None:
         return "；".join(notes)
     return f"已写入 {len(notes)} 项：" + "；".join(notes[:4]) + ("…" if len(notes) > 4 else "")
 
+
+def extract_pending_actions(understanding: dict) -> list[dict]:
+    """提取待用户确认的写入项（聊天场景不自动落库）。"""
+    if understanding.get("intent") == "query":
+        return []
+    actions = understanding.get("actions") or []
+    if understanding.get("should_act") and not actions:
+        intent = understanding.get("intent")
+        data = understanding.get("data") or {}
+        if intent in ("balance", "transaction", "reminder"):
+            actions = [{"intent": intent, "data": data}]
+    pending: list[dict] = []
+    for item in actions:
+        intent = item.get("intent")
+        if intent in ("balance", "transaction", "reminder"):
+            pending.append({"intent": intent, "data": item.get("data") or {}})
+    return pending
+
+
 def generate_chat_reply(
     persona: str,
     message: str,
@@ -692,6 +711,7 @@ def generate_chat_reply(
     understanding: dict | None = None,
     action_note: str | None = None,
     query_answer: str | None = None,
+    pending_count: int = 0,
 ) -> str:
     persona = _valid_persona(persona)
     message = _truncate(message)
@@ -706,6 +726,12 @@ def generate_chat_reply(
         parts.append(f"【查询结果】{query_answer}")
     if action_note:
         parts.append(f"【系统已执行】{action_note}")
+    elif pending_count > 0:
+        parts.append(
+            f"【待用户确认】已识别 {pending_count} 项待写入，"
+            "界面会弹出可编辑确认卡片；尚未写入数据库。"
+            "请用角色语气请用户核对卡片后点确定，不要声称已经记入。"
+        )
     else:
         parts.append("【系统已执行】无（本次未写入数据库）")
     for h in hist:
@@ -718,6 +744,7 @@ def generate_chat_reply(
         "以下是对话历史、用户数据与当前消息。请用角色语气自然回复。\n"
         "硬性规则：涉及金额/账户/待办时，只能依据【用户当前数据】与【系统已执行】；"
         "禁止把聊天记录里未入库的数字当成已保存数据复述；"
+        "若出现【待用户确认】，明确说还没入库、请在卡片里核对后点确定；"
         "若数据为空且未执行写入，请明确说「尚未记入系统」，并引导用户再说一遍账户明细。\n"
         + "\n".join(parts)
     )
@@ -727,6 +754,14 @@ def generate_chat_reply(
         return reply
     if query_answer:
         return query_answer
+    if pending_count > 0:
+        ask = {
+            "butler": f"我理解了 {pending_count} 项，请在下方卡片核对无误后再点确定哦。",
+            "servant": f"主子，奴才拟了 {pending_count} 条草稿，请过目确认后再写入账册。",
+            "sassy": f"听懂了，{pending_count} 条草稿在下面，你自己核对点确定，别事后赖我。",
+            "lover": f"我听明白啦，下面有 {pending_count} 张确认卡，你改好再点确定就好～",
+        }
+        return ask.get(persona, f"请确认下方 {pending_count} 项后再写入。")
     if action_note:
         ack = {
             "butler": f"好的，{action_note}。可在统计页查看。",
