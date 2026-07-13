@@ -624,13 +624,21 @@ POST /api/wxpusher/dispatch
 ---
 
 ### #31 · 2026-07-13 · Cursor(Grok) · 完整部署教程
-- 对应功能/文件：`docs/部署教程.md`、`.env.example`、`docker-compose.postgres.yml`、`README.md`
+- 对应功能/文件：`docs/部署教程.md`（后拆分为 docs/部署/）、`.env.example`、`docker-compose.postgres.yml`
 - Prompt：
-  > backend/.env.example backend/.env部分的教程不完善，教我怎么部署数据库等内容，我希望各种部署方式都提供完整的部署教程
+  > backend/.env.example … 各种部署方式都提供完整的部署教程
+- 采纳情况：全部采纳（随后按方式拆成独立文档）。
+
+---
+
+### #32 · 2026-07-13 · Cursor(Grok) · 部署文档按方式拆分
+- 对应功能/文件：`docs/部署/*.md`、索引与 README 链接
+- Prompt：
+  > 每种部署方式一个文档
 - AI 原始输出：
 
-```md
-# 五种方式 A–E + DATABASE_URL/Postgres 建库步骤 + env 逐项说明
+```text
+docs/部署/{README,环境变量,数据库,A–E,常见问题}.md
 ```
 
 - 采纳情况：全部采纳。

@@ -1,5 +1,4 @@
-# Vita 云服务器测试部署（从 GitHub 拉取后一键启动）
-# 用法见 README「云服务器部署」
+# Vita 云服务器测试部署（SQLite）。步骤：docs/部署/D-Docker-SQLite.md
 
 services:
   backend:

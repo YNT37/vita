@@ -74,7 +74,7 @@ npm run dev    # http://localhost:3000
 
 ## 🔑 环境变量（摘要）
 
-完整逐项说明 → [docs/部署教程.md](docs/部署教程.md) 第 2～3 节。
+完整逐项说明 → [docs/部署/环境变量说明.md](docs/部署/环境变量说明.md)
 
 | 变量 | 位置 | 说明 |
 |---|---|---|
@@ -97,15 +97,15 @@ npm run dev    # http://localhost:3000
 
 ## 📦 部署
 
-**完整教程（环境变量逐项说明 + 数据库安装 + 5 种上线方式）→ [docs/部署教程.md](docs/部署教程.md)**
+**部署文档（每种方式一份）→ [docs/部署/README.md](docs/部署/README.md)**
 
-| 方式 | 一句话 |
-|------|--------|
-| A 本机 venv + SQLite | 开发默认 |
-| B 云服务器 venv + SQLite | 最快演示 |
-| C 云服务器 venv + PostgreSQL | 更稳 |
-| D Docker Compose + SQLite | 一键 `:80` |
-| E Docker Compose + PostgreSQL | 容器化正式 |
+| 方式 | 文档 |
+|------|------|
+| A 本机 venv + SQLite | [A](docs/部署/A-本机开发-venv-SQLite.md) |
+| B 云服务器 venv + SQLite | [B](docs/部署/B-云服务器-venv-SQLite.md) |
+| C 云服务器 venv + PostgreSQL | [C](docs/部署/C-云服务器-venv-PostgreSQL.md) |
+| D Docker + SQLite | [D](docs/部署/D-Docker-SQLite.md) |
+| E Docker + PostgreSQL | [E](docs/部署/E-Docker-PostgreSQL.md) |
 
 ### 云服务器快速开始（方式 B）
 
@@ -116,7 +116,7 @@ cp backend/.env.example backend/.env && vim backend/.env      # SECRET_KEY / JWT
 chmod +x deploy/*.sh && ./deploy/venv-setup.sh && ./deploy/venv-start.sh
 ```
 
-细节、Postgres 建库、Docker 命令见部署教程，勿只改 `.env.example` 注释。
+细节见对应文档；环境变量与建库见 [环境变量](docs/部署/环境变量说明.md)、[数据库](docs/部署/数据库-SQLite与PostgreSQL.md)。
 
 ## 🌐 线上地址
 - 方式 B/C：`http://<公网IP>:3000`（API `:5000`）
@@ -125,7 +125,7 @@ chmod +x deploy/*.sh && ./deploy/venv-setup.sh && ./deploy/venv-start.sh
 ## 📚 文档
 | 文档 | 说明 |
 |---|---|
-| [docs/部署教程.md](docs/部署教程.md) | **部署与数据库完整指南** |
+| [docs/部署/README.md](docs/部署/README.md) | **部署索引（分方式）** |
 | [docs/需求文档.md](docs/需求文档.md) | 功能需求 FRD v1.1 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计 |
 | [docs/API文档.md](docs/API文档.md) | 接口契约 |
