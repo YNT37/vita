@@ -14,125 +14,110 @@
 - 🤖 AI 管家：角色切换 + 对话 + 每日简报 + 自然语言确认卡 ✅
 
 ## 🧱 技术栈
-Next.js 16(App Router+TS+Tailwind v4) · Flask + SQLAlchemy · PostgreSQL · LangChain + OpenAI 兼容 / Anthropic · JWT
+Next.js 16(App Router+TS+Tailwind v4) · Flask + SQLAlchemy · SQLite / PostgreSQL · LangChain + OpenAI 兼容 / Anthropic · JWT · Docker
 
 ## 📁 结构
 ```
 vita/
-├── backend/     # Flask + SQLAlchemy（本地 SQLite，线上 PostgreSQL）
-├── frontend/    # Next.js
-└── docs/        # 需求 / 架构 / API / prompt_log / 研发日志 / 审查清单
+├── backend/              # Flask
+├── frontend/             # Next.js
+├── deploy/               # Caddyfile、pull-and-up.sh
+├── docker-compose.yml    # 默认部署（SQLite）
+├── docker-compose.postgres.yml
+└── docs/                 # 需求 / 架构 / API / 部署 / prompt_log
 ```
 
-## 🗺️ 前端路由（当前进度）
+## 🗺️ 前端路由
 | 路由 | 页面 | 状态 |
 |---|---|---|
 | `/login` | 登录 | ✅ |
 | `/register` | 注册 | ✅ |
 | `/` | **AI 管家（主页）** | ✅ |
-| `/stats` | 统计中心（概览/资产/待办/分类） | ✅ |
+| `/stats` | 统计中心 | ✅ |
 | `/records` | 记账 | ✅ |
 | `/reminders` | 提醒 | ✅ |
-| `/user` | **我的**（账号 / 摘要 / 退出） | ✅ |
-| `/settings` | AI 设置（性格 / API Key，从「我的」进入） | ✅ |
+| `/user` | **我的** | ✅ |
+| `/settings` | AI 设置 | ✅ |
 | `/persona` | 重定向至 `/` | ✅ |
 
-底栏：管家 · 统计 · 记账 · 提醒 · 我的（手机）；桌面端为左侧导航栏。页面自适应手机与电脑浏览器。
+## 🚀 本地运行（开发热重载）
 
-## 🚀 本地运行
+写代码用 venv + `npm run dev`。只想本机跑通产品 → [本地 Docker](docs/部署/本地-Docker.md)。
 
-### 后端（Flask · 端口 5000 · 推荐 venv）
+### 后端
 ```powershell
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-Copy-Item .env.example .env    # 本地 SQLite 可留空 DATABASE_URL
-python app.py                  # http://localhost:5000/api/health
-```
-
-Linux / macOS：
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
+Copy-Item .env.example .env
 python app.py
 ```
 
-### 前端（Next.js · 端口 3000）
-```powershell
-cd frontend
-Copy-Item .env.local.example .env.local -ErrorAction SilentlyContinue
-# 若无 example：新建 .env.local，内容 NEXT_PUBLIC_API_BASE=http://localhost:5000
-npm install    # 首次
-npm run dev    # http://localhost:3000
+```bash
+cd backend && python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt && cp .env.example .env && python app.py
 ```
 
-> 前后端需**同时运行**。注册/登录后可在浏览器操作记账与提醒。
+### 前端
+```powershell
+cd frontend
+# .env.local 内容：NEXT_PUBLIC_API_BASE=http://localhost:5000
+npm install
+npm run dev
+```
 
 ## 🔑 环境变量（摘要）
 
-完整逐项说明 → [docs/部署/环境变量说明.md](docs/部署/环境变量说明.md)
+Docker 部署详解 → [docs/部署/环境变量.md](docs/部署/环境变量.md)
 
 | 变量 | 位置 | 说明 |
 |---|---|---|
-| `SECRET_KEY` / `JWT_SECRET` | `backend/.env` | 上线必改随机串 |
-| `DATABASE_URL` | `backend/.env` | 留空→SQLite；Postgres 填连接串 |
-| `AI_*` | `backend/.env` | 可选，也可网页设置 |
-| `PUBLIC_HOST` | `deploy/.env` | 云服务器 venv：公网 IP |
-| `NEXT_PUBLIC_API_BASE` | `frontend/.env.local` | 本机开发指向后端 |
+| `SECRET_KEY` / `JWT_SECRET` | `backend/.env` | 上线必改 |
+| `DATABASE_URL` | `backend/.env` | Docker+SQLite 可留空；Postgres 用 `@db:5432` |
+| `AI_*` | `backend/.env` | 可选 |
+| `NEXT_PUBLIC_API_BASE` | 仅本机 `npm run dev` | Docker 同域反代时构建为空 |
 
-### 微信提醒（Server酱）绑定步骤
-1. 打开 https://sct.ftqq.com ，用**微信扫码登录**（无需下载 App）
-2. 在「Key&API」复制 **SendKey**
-3. 登录 Vita → **我的** → 粘贴 SendKey → 保存 → **发送测试**
-4. 创建已到期的提醒，点「立即检查到期」或等待后台扫描
+### 微信提醒（Server酱）
+1. https://sct.ftqq.com 微信扫码 → 复制 SendKey  
+2. Vita「我的」粘贴 → 保存 → 发送测试  
 
 ### 浏览器弹窗提醒（推荐）
-1. 登录 Vita → **我的** → **开启浏览器通知**
-2. 浏览器弹出权限框时点「允许」
-3. 点「发送测试弹窗」验证；到期待办约每 45 秒检查一次（需保持网页打开）
+「我的」→ 开启浏览器通知 → 允许 → 发送测试（页面保持打开）。
 
-## 📦 部署
+## 📦 部署（统一 Docker）
 
-**部署文档（每种方式一份）→ [docs/部署/README.md](docs/部署/README.md)**
+**→ [docs/部署/README.md](docs/部署/README.md)**
 
-| 方式 | 文档 |
-|------|------|
-| A 本机 venv + SQLite | [A](docs/部署/A-本机开发-venv-SQLite.md) |
-| B 云服务器 venv + SQLite | [B](docs/部署/B-云服务器-venv-SQLite.md) |
-| C 云服务器 venv + PostgreSQL | [C](docs/部署/C-云服务器-venv-PostgreSQL.md) |
-| D Docker + SQLite | [D](docs/部署/D-Docker-SQLite.md) |
-| E Docker + PostgreSQL | [E](docs/部署/E-Docker-PostgreSQL.md) |
+| 方式 | 文档 | 访问 |
+|------|------|------|
+| 本地 | [本地-Docker.md](docs/部署/本地-Docker.md) | `http://localhost` |
+| 云服务器 | [云服务器-Docker.md](docs/部署/云服务器-Docker.md) | `http://公网IP/` |
 
-### 云服务器快速开始（方式 B）
+云服务器最快路径：
 
 ```bash
 git clone https://github.com/YNT37/vita.git && cd vita
-cp deploy/.env.example deploy/.env && vim deploy/.env          # PUBLIC_HOST=公网IP
-cp backend/.env.example backend/.env && vim backend/.env      # SECRET_KEY / JWT_SECRET
-chmod +x deploy/*.sh && ./deploy/venv-setup.sh && ./deploy/venv-start.sh
+cp backend/.env.example backend/.env && vim backend/.env   # SECRET_KEY / JWT_SECRET
+docker compose up -d --build
+# 之后更新：chmod +x deploy/pull-and-up.sh && ./deploy/pull-and-up.sh
 ```
 
-细节见对应文档；环境变量与建库见 [环境变量](docs/部署/环境变量说明.md)、[数据库](docs/部署/数据库-SQLite与PostgreSQL.md)。
+默认 SQLite；可选 Postgres 见部署文档。
 
 ## 🌐 线上地址
-- 方式 B/C：`http://<公网IP>:3000`（API `:5000`）
-- 方式 D/E：`http://<公网IP>/`
+- `http://<公网IP>/`（Docker · 端口 80）
 
 ## 📚 文档
 | 文档 | 说明 |
 |---|---|
-| [docs/部署/README.md](docs/部署/README.md) | **部署索引（分方式）** |
-| [docs/需求文档.md](docs/需求文档.md) | 功能需求 FRD v1.1 |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构设计 |
-| [docs/API文档.md](docs/API文档.md) | 接口契约 |
-| [docs/prompt_log.md](docs/prompt_log.md) | AI Prompt 日志（考核 10%） |
-| [docs/研发日志/](docs/研发日志/) | 每日研发总结 |
-| [docs/review_checklist.md](docs/review_checklist.md) | 代码审查清单 |
+| [docs/部署/README.md](docs/部署/README.md) | **部署（本地 / 云 · Docker）** |
+| [docs/需求文档.md](docs/需求文档.md) | 功能需求 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构 |
+| [docs/API文档.md](docs/API文档.md) | 接口 |
+| [docs/prompt_log.md](docs/prompt_log.md) | Prompt 日志 |
+| [docs/研发日志/](docs/研发日志/) | 研发日志 |
+| [docs/review_checklist.md](docs/review_checklist.md) | 审查清单 |
 
-## 🔀 分支说明
-- `main`：当前主干（前后端完整）
-- `feat/persona-frontend`：已合并进 `main` 的开发支线
+## 🔀 分支
+- `main`：主干

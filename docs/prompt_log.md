@@ -642,3 +642,17 @@ docs/部署/{README,环境变量,数据库,A–E,常见问题}.md
 ```
 
 - 采纳情况：全部采纳。
+
+---
+
+### #33 · 2026-07-13 · Cursor(Grok) · 部署统一为 Docker 两种
+- 对应功能/文件：`docs/部署/本地-Docker.md`、`云服务器-Docker.md`；移除 venv 部署脚本与 A–E
+- Prompt：
+  > 统一使用docker，只有本地部署和云部署两种
+- AI 原始输出：
+
+```text
+仅保留本地 Docker / 云服务器 Docker；pull-and-up → compose
+```
+
+- 采纳情况：全部采纳。

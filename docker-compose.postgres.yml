@@ -1,5 +1,5 @@
 # Vita：Docker Compose + PostgreSQL + Caddy（:80）
-# 完整步骤见 docs/部署/E-Docker-PostgreSQL.md
+# 完整步骤见 docs/部署/云服务器-Docker.md （可选 Postgres）
 #
 # 准备：
 #   cp backend/.env.example backend/.env && vim backend/.env

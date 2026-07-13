@@ -1,23 +1,20 @@
-# Vita 部署文档索引
+# Vita 部署（仅 Docker）
 
 仓库：https://github.com/YNT37/vita
 
-**先选一种方式，只打开对应文档即可。** SQLite 与 PostgreSQL 数据不互通，换库等于空库。
+部署统一用 **Docker Compose**，只有两种：
 
-| 文档 | 适合 | 数据库 | 访问 |
-|------|------|--------|------|
-| [A · 本机开发](./A-本机开发-venv-SQLite.md) | 日常写代码 | SQLite | `:3000` + `:5000` |
-| [B · 云服务器 venv + SQLite](./B-云服务器-venv-SQLite.md) | 考核快速演示 | SQLite | `http://IP:3000` |
-| [C · 云服务器 venv + PostgreSQL](./C-云服务器-venv-PostgreSQL.md) | 更稳 | Postgres | 同上 |
-| [D · Docker + SQLite](./D-Docker-SQLite.md) | 不想装 Node/Python | 容器 SQLite | `http://IP/`（80） |
-| [E · Docker + PostgreSQL](./E-Docker-PostgreSQL.md) | 容器化正式 | 容器 Postgres | `http://IP/`（80） |
+| 文档 | 场景 | 访问 |
+|------|------|------|
+| [本地 Docker](./本地-Docker.md) | 本机一键跑通 / 演示 | `http://localhost` |
+| [云服务器 Docker](./云服务器-Docker.md) | 公网考核演示 | `http://公网IP/` |
 
-### 公共参考
+默认数据库为 **SQLite**（compose 数据卷）。可选升级 **PostgreSQL**：见各文档末尾，或 [数据库说明](./数据库.md)。
 
-| 文档 | 内容 |
+| 参考 | 说明 |
 |------|------|
-| [环境变量说明](./环境变量说明.md) | `backend/.env`、`deploy/.env` 逐项 |
-| [数据库：SQLite 与 PostgreSQL](./数据库-SQLite与PostgreSQL.md) | 安装、建库、备份 |
-| [常见问题](./常见问题.md) | CORS、SSH 断连、换库等 |
+| [环境变量](./环境变量.md) | `backend/.env` 怎么填 |
+| [数据库](./数据库.md) | SQLite / Postgres |
+| [常见问题](./常见问题.md) | CORS、端口、SSH 等 |
 
-建议：先跑通 **B**，再按需升到 **C** 或 **E**。
+> 写代码仍可用本机 venv + `npm run dev`（见仓库 README「本地运行」）。**上线 / 交付部署请只用 Docker。**
