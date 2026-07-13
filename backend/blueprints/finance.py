@@ -5,7 +5,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from extensions import db
-from models import Transaction
+from models import Transaction, Asset
 from errors import ApiError
 
 finance_bp = Blueprint("finance", __name__, url_prefix="/api")
@@ -128,3 +128,44 @@ def stats_summary():
             for d, v in sorted(by_day.items())
         ],
     }), 200
+
+
+@finance_bp.get("/assets")
+@jwt_required()
+def list_assets():
+    items = (
+        Asset.query.filter_by(user_id=_uid())
+        .order_by(Asset.updated_at.desc(), Asset.id.desc())
+        .all()
+    )
+    return jsonify([a.to_dict() for a in items]), 200
+
+
+@finance_bp.post("/assets")
+@jwt_required()
+def upsert_asset():
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not name or len(name) > 32:
+        raise ApiError("invalid_name", "资产名称不能为空且不超过32位", 400, "name")
+    try:
+        balance = Decimal(str(data.get("balance")))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ApiError("invalid_balance", "余额必须是数字", 400, "balance")
+    if not balance.is_finite() or balance < 0 or balance > Decimal("10000000000"):
+        raise ApiError("invalid_balance", "余额需为非负数且不超过100亿", 400, "balance")
+    note = (data.get("note") or "").strip()
+    if len(note) > 200:
+        raise ApiError("invalid_note", "备注不超过200位", 400, "note")
+
+    uid = _uid()
+    asset = Asset.query.filter_by(user_id=uid, name=name).first()
+    if asset:
+        asset.balance = balance
+        asset.note = note
+        asset.updated_at = datetime.utcnow()
+    else:
+        asset = Asset(user_id=uid, name=name, balance=balance, note=note)
+        db.session.add(asset)
+    db.session.commit()
+    return jsonify(asset.to_dict()), 200

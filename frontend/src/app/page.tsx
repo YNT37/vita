@@ -110,6 +110,8 @@ export default function HomePage() {
         await apiFetch("/api/transactions", { method: "POST", body: parseResult.data });
       } else if (parseResult.intent === "reminder") {
         await apiFetch("/api/reminders", { method: "POST", body: parseResult.data });
+      } else if (parseResult.intent === "balance") {
+        await apiFetch("/api/assets", { method: "POST", body: parseResult.data });
       }
       setParseInput("");
       setParseResult(null);
@@ -218,7 +220,7 @@ export default function HomePage() {
             className="flex-1 rounded-lg border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 text-sm outline-none focus:border-blue-500"
             value={parseInput}
             onChange={(e) => setParseInput(e.target.value)}
-            placeholder="午饭30 / 提醒我明天还花呗"
+            placeholder="午饭30 / 基金余额1901 / 提醒我明天还花呗"
             disabled={parseLoading}
           />
           <button
@@ -236,7 +238,19 @@ export default function HomePage() {
             ) : (
               <>
                 <p className="mb-1">
-                  识别为：<strong>{parseResult.intent === "transaction" ? "记账" : "提醒"}</strong>
+                  识别为：
+                  <strong>
+                    {parseResult.intent === "transaction"
+                      ? "记账"
+                      : parseResult.intent === "reminder"
+                        ? "提醒"
+                        : "资产余额"}
+                  </strong>
+                  {parseResult.intent === "balance" && (
+                    <span className="text-gray-500 ml-1">
+                      {String(parseResult.data.name ?? "资产")} → {String(parseResult.data.balance ?? "")} 元
+                    </span>
+                  )}
                 </p>
                 <button
                   type="button"

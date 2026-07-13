@@ -26,7 +26,8 @@
 
 ## 二、记账 Transactions（需 JWT）
 
-- `GET /api/transactions?month=YYYY-MM` → 列表（仅本人）
+- `GET /api/assets` → 资产余额列表
+- `POST /api/assets` `{name,balance,note?}` → 记录/更新资产余额（同名覆盖）
 - `POST /api/transactions` `{type(income/expense),amount>0,category,note,date}` → 201
 - `DELETE /api/transactions/<id>` → `{"ok":true}`；不存在/越权→404
 - `GET /api/stats/summary?month=` → `{income,expense,byCategory[],byDay[]}`
@@ -49,7 +50,8 @@
 - `ai_provider`：`openai`（需 Key+Base URL+Model）或 `anthropic`（需 Key+Model，Base URL 可选）
 - `POST /api/ai/chat` `{message}` → `{reply}`（空→400）
 - `POST /api/ai/brief` → `{text}`（聚合当日数据，角色语气播报）
-- `POST /api/ai/parse` `{text}` → `{intent:"transaction|reminder|unknown", data:{...}}`
+- `POST /api/ai/chat` `{message}` → `{reply,action?,intent?}`；自动理解意图（查询/记账/余额/提醒/闲聊）并执行可写操作
+- `POST /api/ai/parse` `{text}` → `{intent:"transaction|reminder|balance|unknown", data:{...}}`
 
 健壮性：AI 空输入/超时/Key 失效/非法返回 → 降级文案，绝不 500。
 

@@ -10,7 +10,7 @@ export const PERSONA_LABELS: Record<PersonaId, string> = {
 export const PERSONA_OPTIONS: PersonaId[] = ["butler", "servant", "sassy", "lover"];
 
 export type ParseResult = {
-  intent: "transaction" | "reminder" | "unknown";
+  intent: "transaction" | "reminder" | "balance" | "unknown";
   data: Record<string, unknown>;
 };
 
