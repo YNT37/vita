@@ -110,11 +110,11 @@ cd vita
 
 # 2. 部署配置：填公网 IP
 cp deploy/.env.example deploy/.env
-nano deploy/.env          # PUBLIC_HOST=你的公网IP
+vim deploy/.env           # PUBLIC_HOST=你的公网IP
 
 # 3. 后端密钥 / AI（可沿用已有 venv：在 deploy/.env 设 VENV_DIR=/path/to/.venv）
 cp backend/.env.example backend/.env
-nano backend/.env         # SECRET_KEY、JWT_SECRET；可选 AI_API_KEY
+vim backend/.env          # SECRET_KEY、JWT_SECRET；可选 AI_API_KEY
 
 # 4. 装依赖并启动
 chmod +x deploy/*.sh
