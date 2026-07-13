@@ -24,13 +24,6 @@ const TYPE_LABELS: Record<ReminderType, string> = {
   anniversary: "纪念日",
 };
 
-function toDatetimeLocalValue(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 function formatDue(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
@@ -41,6 +34,12 @@ function formatDue(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function isOverdue(iso: string): boolean {
+  const due = new Date(iso).getTime();
+  if (Number.isNaN(due)) return false;
+  return due < Date.now();
 }
 
 function isDueSoon(iso: string): boolean {
@@ -140,6 +139,7 @@ export default function RemindersPage() {
   }
 
   async function remove(id: number) {
+    if (!window.confirm("确定删除这条提醒？")) return;
     setError("");
     try {
       await apiFetch(`/api/reminders/${id}`, { method: "DELETE" });
@@ -150,17 +150,48 @@ export default function RemindersPage() {
     }
   }
 
+  async function snoozeOneDay(item: Reminder) {
+    setError("");
+    const d = new Date(item.due_at);
+    if (Number.isNaN(d.getTime())) {
+      setError("到期时间无效");
+      return;
+    }
+    d.setDate(d.getDate() + 1);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const next = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    try {
+      const updated = await apiFetch<Reminder>(`/api/reminders/${item.id}`, {
+        method: "PATCH",
+        body: { due_at: next },
+      });
+      setItems((prev) =>
+        prev
+          .map((r) => (r.id === item.id ? updated : r))
+          .sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime())
+      );
+      bump();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "延后失败");
+    }
+  }
+
   if (authLoading || !user) {
     return (
       <main className="flex-1 grid place-items-center text-gray-500">加载中…</main>
     );
   }
 
+  const pending = items.filter((i) => !i.done);
+  const doneItems = items.filter((i) => i.done);
+
   return (
     <PageContainer>
       <header className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl font-semibold">日程提醒</h1>
-        <p className="text-sm text-gray-500">待办、账单与纪念日到期提醒</p>
+        <p className="text-sm text-gray-500">
+          待办、账单与纪念日。浏览器弹窗可在「我的」开启。
+        </p>
       </header>
 
       <section className="rounded-2xl border border-black/10 dark:border-white/15 p-5 mb-6">
@@ -224,25 +255,28 @@ export default function RemindersPage() {
       )}
 
       <section>
-        <h2 className="font-medium mb-3">我的提醒</h2>
+        <h2 className="font-medium mb-3">待办（{pending.length}）</h2>
         {loading ? (
           <p className="text-sm text-gray-500">加载中…</p>
-        ) : items.length === 0 ? (
+        ) : pending.length === 0 ? (
           <p className="text-sm text-gray-500 rounded-xl border border-dashed border-black/15 dark:border-white/20 p-6 text-center">
-            还没有提醒，添加一条吧
+            暂无未完成提醒
           </p>
         ) : (
           <ul className="space-y-3">
-            {items.map((item) => {
-              const soon = !item.done && isDueSoon(item.due_at);
+            {pending.map((item) => {
+              const soon = isDueSoon(item.due_at);
+              const overdue = isOverdue(item.due_at);
               return (
                 <li
                   key={item.id}
                   className={`rounded-xl border p-4 flex gap-3 items-start ${
-                    soon
-                      ? "border-amber-400/60 bg-amber-50/50 dark:bg-amber-950/20"
-                      : "border-black/10 dark:border-white/15"
-                  } ${item.done ? "opacity-60" : ""}`}
+                    overdue
+                      ? "border-red-300 bg-red-50/50 dark:bg-red-950/20"
+                      : soon
+                        ? "border-amber-400/60 bg-amber-50/50 dark:bg-amber-950/20"
+                        : "border-black/10 dark:border-white/15"
+                  }`}
                 >
                   <input
                     type="checkbox"
@@ -253,26 +287,32 @@ export default function RemindersPage() {
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`font-medium ${item.done ? "line-through text-gray-500" : ""}`}
-                      >
-                        {item.title}
-                      </span>
+                      <span className="font-medium">{item.title}</span>
                       <span className="text-xs rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">
                         {TYPE_LABELS[item.type]}
                       </span>
-                      {soon && (
+                      {overdue && (
+                        <span className="text-xs text-red-600">已逾期</span>
+                      )}
+                      {!overdue && soon && (
                         <span className="text-xs text-amber-600 dark:text-amber-400">
                           即将到期
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-500 mt-1">
-                      {formatDue(item.due_at)}
-                    </p>
+                    <p className="text-sm text-gray-500 mt-1">{formatDue(item.due_at)}</p>
                     {item.note && (
                       <p className="text-sm text-gray-400 mt-1">{item.note}</p>
                     )}
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => snoozeOneDay(item)}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        延后 1 天
+                      </button>
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -287,6 +327,38 @@ export default function RemindersPage() {
           </ul>
         )}
       </section>
+
+      {doneItems.length > 0 && (
+        <section className="mt-8">
+          <h2 className="font-medium mb-3 text-gray-500">已完成（{doneItems.length}）</h2>
+          <ul className="space-y-2">
+            {doneItems.map((item) => (
+              <li
+                key={item.id}
+                className="rounded-xl border border-black/10 dark:border-white/15 p-3 flex gap-3 items-center opacity-60"
+              >
+                <input
+                  type="checkbox"
+                  checked
+                  onChange={() => toggleDone(item)}
+                  className="h-4 w-4 accent-blue-600"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm line-through">{item.title}</p>
+                  <p className="text-xs text-gray-400">{formatDue(item.due_at)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => remove(item.id)}
+                  className="text-xs text-red-500 hover:underline"
+                >
+                  删除
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </PageContainer>
   );
 }

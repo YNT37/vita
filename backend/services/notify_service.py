@@ -20,8 +20,11 @@ TYPE_LABEL = {
 
 
 def dispatch_due_reminders(user_id: int | None = None) -> dict:
-    """推送已到期且未发送过的提醒。可指定用户，或扫描全部已绑定用户。"""
-    now = datetime.utcnow()
+    """推送已到期且未发送过的提醒。可指定用户，或扫描全部已绑定用户。
+
+    due_at 按「本地墙钟时间」比较（与前端 datetime-local 一致），不用 utcnow。
+    """
+    now = datetime.now()
     q = Reminder.query.filter(
         Reminder.done.is_(False),
         Reminder.due_at <= now,

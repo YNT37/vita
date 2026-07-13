@@ -18,6 +18,14 @@ export class ApiError extends Error {
 
 const TOKEN_KEY = "vita_token";
 
+type UnauthorizedHandler = () => void;
+let onUnauthorized: UnauthorizedHandler | null = null;
+
+/** 由 AuthProvider 注册：收到 401 时清会话并跳转登录。 */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
+  onUnauthorized = handler;
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return window.localStorage.getItem(TOKEN_KEY);
@@ -72,6 +80,10 @@ export async function apiFetch<T = unknown>(
   }
 
   if (!res.ok) {
+    if (res.status === 401 && auth) {
+      clearToken();
+      onUnauthorized?.();
+    }
     const err = (data as ErrorBody | null)?.error;
     throw new ApiError(
       res.status,

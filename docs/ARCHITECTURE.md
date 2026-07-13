@@ -1,6 +1,7 @@
 # Vita 架构设计文档
 
-> 多用户 AI 生活管家。前端 Next.js，后端 Flask，数据 PostgreSQL，AI 经后端 → LangChain → DeepSeek。
+> 多用户 AI 生活管家。前端 Next.js，后端 Flask，数据 PostgreSQL（本地可 SQLite）。
+> AI 经后端 → LangChain → OpenAI 兼容端点或 Anthropic（用户可在设置中配置 Base URL / Model / Key）。
 > JWT 鉴权，数据按用户隔离。本文是实现依据与关键架构决策记录。
 
 ## 1. 系统概览
@@ -9,12 +10,15 @@
 flowchart LR
   U[用户浏览器] -->|HTTP/JSON + JWT| FE[Next.js 前端]
   FE -->|fetch /api/*| BE[Flask 后端 REST API]
-  BE --> DB[(PostgreSQL\nSQLAlchemy)]
-  BE -->|LangChain| DS[DeepSeek]
+  BE --> DB[(PostgreSQL / SQLite)]
+  BE -->|LangChain| AI[OpenAI兼容 / Anthropic]
+  FE -->|Notification API| BN[浏览器弹窗]
+  BE -.->|可选 Server酱| WX[微信]
 ```
 
-- 前端只经 `NEXT_PUBLIC_API_BASE` 调后端，不直连 DeepSeek（密钥不暴露）。
+- 前端只经 `NEXT_PUBLIC_API_BASE` 调后端，不直连 LLM（密钥不暴露）。
 - 后端负责鉴权、业务校验、持久化；AI 调用统一收敛到 `services/ai_service.py`。
+- 对话识别出的记账/提醒/余额先返回 `pending[]`，由前端确认卡写入，不自动落库。
 - 除注册/登录/健康检查外，所有接口需 JWT，并按 `user_id` 过滤数据。
 
 ## 2. 技术选型
@@ -24,7 +28,7 @@ flowchart LR
 | 后端 | Flask + Flask-SQLAlchemy | 轻量、与 LangChain 同生态 |
 | 鉴权 | flask-jwt-extended + werkzeug 哈希 | 无状态、跨域友好 |
 | DB | PostgreSQL（本地可 SQLite，env 切换） | 关系型数据、聚合统计方便 |
-| AI | LangChain + DeepSeek | 契合主题；OpenAI 兼容端点 |
+| AI | LangChain + OpenAI 兼容 / Anthropic | 用户可配 DeepSeek 等兼容端点；双提供商 |
 
 ## 3. 目录结构
 ```
@@ -65,9 +69,10 @@ frontend/             # Next.js（create-next-app 生成）
 | parse | 自然语言 | 结构化 JSON | Pydantic + 失败正则兜底 |
 
 - **4 角色**：butler(管家)/servant(奴才)/sassy(毒舌闺蜜)/lover(暖心恋人)，各一段 system prompt，集中在 `prompts.py`。
-- **DeepSeek 接入**：`ChatOpenAI(base_url="https://api.deepseek.com", model="deepseek-chat", api_key=env)`。
+- **LLM 接入**：按用户设置 `ai_provider` 选择 ChatOpenAI（兼容端点，含 DeepSeek）或 ChatAnthropic；Key / Base URL / Model 可存用户 settings 或 env。
 - **降级（重点）**：无 key / 超时 / 异常 / 非法 JSON → chat/brief 返回角色静态兜底文案；parse 返回 intent=unknown；一律不抛 500。
 - **上下文控制**：history 取最近 6 轮、单条截断 500 字。
+- **确认写入**：chat 返回 `pending` 动作列表，前端确认卡编辑后调用 transactions/reminders/assets API。
 
 ## 6. 鉴权设计
 - 注册：用户名唯一 + 密码哈希入库。
@@ -91,7 +96,7 @@ flowchart LR
   V[Vercel\nNext.js] -->|NEXT_PUBLIC_API_BASE https| C[Caddy\n反代+自动HTTPS]
   C --> BE[Flask + gunicorn 容器]
   BE -->|内网| PG[(PostgreSQL 容器\n数据卷持久化)]
-  BE -->|DEEPSEEK_API_KEY| DS[DeepSeek]
+  BE -->|用户 AI Key| AI[OpenAI兼容 / Anthropic]
 ```
 - docker-compose：db(不暴露端口) + backend(gunicorn) + caddy(80/443)。
 - 前端 Vercel，`NEXT_PUBLIC_API_BASE=https://api.<域名>`。

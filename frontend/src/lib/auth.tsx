@@ -8,7 +8,13 @@ import {
   useCallback,
 } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, setToken, clearToken, getToken } from "@/lib/api";
+import {
+  apiFetch,
+  setToken,
+  clearToken,
+  getToken,
+  setUnauthorizedHandler,
+} from "@/lib/api";
 
 export type User = { id: number; username: string; created_at?: string | null };
 
@@ -28,6 +34,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  const logout = useCallback(() => {
+    clearToken();
+    setUser(null);
+    router.push("/login");
+  }, [router]);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      setUser(null);
+      router.replace("/login");
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [router]);
+
   useEffect(() => {
     const token = getToken();
     if (!token) {
@@ -36,7 +56,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     apiFetch<User>("/api/me")
       .then((u) => setUser(u))
-      .catch(() => clearToken())
+      .catch(() => {
+        clearToken();
+        setUser(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -56,12 +79,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       auth: false,
     });
   }, []);
-
-  const logout = useCallback(() => {
-    clearToken();
-    setUser(null);
-    router.push("/login");
-  }, [router]);
 
   return (
     <AuthContext.Provider

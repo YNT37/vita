@@ -606,3 +606,18 @@ POST /api/wxpusher/dispatch
 ```
 
 - 采纳情况：全部采纳。
+
+---
+
+### #28 · 2026-07-13 · Cursor(Grok) · 收尾优化与 bug 修复
+- 对应功能/文件：`api.ts` / `auth.tsx`；`notify_service.py` / `overview.py`；管家页确认卡 busy / 聊天回滚；`reminders/page.tsx`；`settings`；`stats`；登录注册；`docs/*`
+- Prompt：
+  > 帮我优化页面，修复bug，准备收尾
+- AI 原始输出：
+
+```text
+401 统一登出；提醒本地时区；确认卡 busy + 聊天失败回滚；
+提醒逾期/延后；设置切换不冲配置；统计默认概览；文档同步
+```
+
+- 采纳情况：全部采纳。

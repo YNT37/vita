@@ -43,9 +43,10 @@ export default function HomePage() {
   const [cards, setCards] = useState<Record<string, ConfirmCardState>>({});
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
-  const [confirmBusy, setConfirmBusy] = useState(false);
+  const [busyCardIds, setBusyCardIds] = useState<Record<string, boolean>>({});
 
   const [error, setError] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,6 +54,7 @@ export default function HomePage() {
   }, [authLoading, user, router]);
 
   const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
     try {
       const res = await apiFetch<{ messages: ChatMsg[] }>("/api/ai/chat/history");
       setTimeline(
@@ -66,6 +68,8 @@ export default function HomePage() {
       setCards({});
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "对话记录加载失败");
+    } finally {
+      setHistoryLoading(false);
     }
   }, []);
 
@@ -150,6 +154,8 @@ export default function HomePage() {
         ...newCards.map((c) => ({ kind: "confirm" as const, id: c.id })),
       ]);
     } catch (err) {
+      setTimeline((prev) => prev.filter((item) => item.id !== userItem.id));
+      setChatInput(text);
       setError(err instanceof ApiError ? err.message : "发送失败");
     } finally {
       setChatSending(false);
@@ -176,7 +182,7 @@ export default function HomePage() {
     const card = cards[id];
     if (!card || card.status !== "pending") return;
     setError("");
-    setConfirmBusy(true);
+    setBusyCardIds((prev) => ({ ...prev, [id]: true }));
     try {
       const body = draftToBody(card);
       if (card.intent === "transaction") {
@@ -204,7 +210,11 @@ export default function HomePage() {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : err instanceof Error ? err.message : "写入失败");
     } finally {
-      setConfirmBusy(false);
+      setBusyCardIds((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     }
   }
 
@@ -262,7 +272,9 @@ export default function HomePage() {
             ref={scrollRef}
             className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-3 min-h-0"
           >
-            {timeline.length === 0 ? (
+            {historyLoading && timeline.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">加载对话…</p>
+            ) : timeline.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-6">
                 试试：「中午吃饭花了20」或「记得提醒我明天还花呗」
               </p>
@@ -275,7 +287,7 @@ export default function HomePage() {
                     <div key={item.id} className="flex justify-start">
                       <ConfirmCard
                         card={card}
-                        busy={confirmBusy}
+                        busy={!!busyCardIds[item.id]}
                         onChange={updateCardDraft}
                         onConfirm={confirmCard}
                         onDismiss={dismissCard}

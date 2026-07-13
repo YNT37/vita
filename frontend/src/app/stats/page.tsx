@@ -83,7 +83,7 @@ export default function StatsPage() {
   const { user, loading: authLoading } = useAuth();
   const { bump } = useDataRefresh();
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("assets");
+  const [tab, setTab] = useState<Tab>("overview");
   const [month, setMonth] = useState(currentMonth);
   const [data, setData] = useState<OverviewData | null>(null);
   const [categoryRows, setCategoryRows] = useState<CategoryRow[]>([]);

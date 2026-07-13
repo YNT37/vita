@@ -92,9 +92,10 @@ export default function SettingsPage() {
 
   function switchProvider(next: AiProvider) {
     setProvider(next);
+    // 仅当当前为空时填入该提供商默认值，避免切换时冲掉用户已填的 Base URL / 模型
     const defaults = PROVIDER_DEFAULTS[next];
-    setBaseUrl(defaults.baseUrl);
-    setModel(defaults.model);
+    setBaseUrl((prev) => (prev.trim() ? prev : defaults.baseUrl));
+    setModel((prev) => (prev.trim() ? prev : defaults.model));
   }
 
   async function saveSettings(e: React.FormEvent) {

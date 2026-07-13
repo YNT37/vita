@@ -20,15 +20,21 @@ def get_overview():
     uid = _uid()
     seed_user_categories(uid)
     month = (request.args.get("month") or date.today().strftime("%Y-%m")).strip()
+    try:
+        start = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+    except ValueError:
+        from errors import ApiError
+
+        raise ApiError("invalid_month", "month 格式应为 YYYY-MM", 400, "month")
 
     ctx = build_user_context(uid)
-    now = datetime.utcnow()
+    # due_at 与前端本地时间一致，用 now() 而非 utcnow()
+    now = datetime.now()
     overdue = [
         r for r in ctx.get("reminders_pending", [])
         if r.get("due_at") and datetime.fromisoformat(r["due_at"]) < now
     ]
 
-    start = datetime.strptime(month, "%Y-%m").date().replace(day=1)
     if start.month == 12:
         end = start.replace(year=start.year + 1, month=1)
     else:
