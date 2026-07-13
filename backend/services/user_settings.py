@@ -328,3 +328,27 @@ def resolve_ai_config(user_id: int) -> dict:
 
     }
 
+
+WXPUSHER_UID = "wxpusher_uid"
+
+
+def get_wxpusher_uid(user_id: int) -> str | None:
+    return _get_setting(user_id, WXPUSHER_UID)
+
+
+def set_wxpusher_uid(user_id: int, uid: str | None) -> None:
+    text = (uid or "").strip()
+    if text and not text.upper().startswith("UID_"):
+        # 允许用户粘贴不带前缀的情况，尽量原样保存；官方格式为 UID_
+        pass
+    _set_setting(user_id, WXPUSHER_UID, text if text else None)
+    db.session.commit()
+
+
+def mask_wxpusher_uid(uid: str | None) -> str | None:
+    if not uid:
+        return None
+    if len(uid) <= 8:
+        return "****"
+    return f"{uid[:4]}...{uid[-4:]}"
+

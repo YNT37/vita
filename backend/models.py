@@ -81,6 +81,7 @@ class Reminder(db.Model):
     done = db.Column(db.Boolean, default=False)
     note = db.Column(db.String(200), default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    notified_at = db.Column(db.DateTime, nullable=True)
 
     def to_dict(self):
         return {
@@ -90,6 +91,7 @@ class Reminder(db.Model):
             "type": self.type,
             "done": self.done,
             "note": self.note or "",
+            "notified_at": self.notified_at.isoformat() if self.notified_at else None,
         }
 
 

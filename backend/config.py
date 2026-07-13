@@ -37,3 +37,10 @@ class Config:
     AI_MODEL = os.getenv("AI_MODEL", "gpt-4o-mini")
 
     CORS_ORIGINS = [o.strip() for o in os.getenv("CORS_ORIGINS", "*").split(",") if o.strip()]
+
+    # WxPusher 微信推送（https://wxpusher.zjiecode.com）
+    WXPUSHER_APP_TOKEN = os.getenv("WXPUSHER_APP_TOKEN", "").strip()
+    # 后台扫描到期提醒间隔（秒），0 表示关闭后台线程
+    WXPUSHER_DISPATCH_INTERVAL = int(os.getenv("WXPUSHER_DISPATCH_INTERVAL", "60"))
+    # 可选：外部 cron 调用 /api/wxpusher/dispatch 时的密钥
+    WXPUSHER_CRON_SECRET = os.getenv("WXPUSHER_CRON_SECRET", "").strip()

@@ -566,14 +566,15 @@ await apiFetch(`/api/assets/${id}`, { method: "PATCH", body: { name, balance, ki
 
 ---
 
-### #24 · 2026-07-13 · Cursor(Grok) · 对话内可编辑确认卡片
-- 对应功能/文件：`frontend/src/app/page.tsx`、`components/ConfirmCard.tsx`；`backend/blueprints/ai.py`、`services/ai_service.py`
+### #25 · 2026-07-13 · Cursor(Grok) · WxPusher 微信到期提醒
+- 对应功能/文件：`backend/services/wxpusher_service.py`、`notify_service.py`、`blueprints/wxpusher.py`、`app.py`；`frontend/.../WxPusherBind.tsx`、`user/page.tsx`
 - Prompt：
-  > 和 AI 说中午吃饭花了20就弹出确认卡片；提醒又弹一条；卡片可编辑，点确定才上传
+  > 用WxPusher吧
 - AI 原始输出：
 
-```tsx
-// chat 返回 pending[]，不自动落库；每条 pending 渲染可编辑 ConfirmCard
+```python
+# 绑定 UID / 扫码；dispatch 扫描 due_at<=now 推送微信；后台线程每 60s
+POST /api/wxpusher/dispatch
 ```
 
 - 采纳情况：全部采纳。

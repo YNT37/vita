@@ -101,6 +101,7 @@ def update_reminder(reminder_id):
         reminder.title = _validate_title(data.get("title"))
     if "due_at" in data:
         reminder.due_at = _parse_due(data.get("due_at"))
+        reminder.notified_at = None  # 改期后允许再次推送
     if "type" in data:
         reminder.type = _validate_type(data.get("type"))
     if "note" in data:

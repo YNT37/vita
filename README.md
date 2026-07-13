@@ -10,8 +10,8 @@
 ## ✨ 功能
 - 🔐 多用户账号体系（注册/登录，JWT 鉴权，数据按用户隔离）✅
 - 💰 记账理财：记一笔 / 分类 / 收支统计 ✅
-- ⏰ 日程提醒：待办 / 账单 / 到期提醒 ✅
-- 🤖 AI 管家：角色切换 + 对话 + 每日简报 + 自然语言记账 🔲
+- ⏰ 日程提醒：待办 / 账单 / 到期提醒；可选 **WxPusher 微信推送** ✅
+- 🤖 AI 管家：角色切换 + 对话 + 每日简报 + 自然语言确认卡 ✅
 
 ## 🧱 技术栈
 Next.js 16(App Router+TS+Tailwind v4) · Flask + SQLAlchemy · PostgreSQL · LangChain + OpenAI 兼容 / Anthropic · JWT
@@ -69,8 +69,16 @@ npm run dev    # http://localhost:3000
 | AI_API_KEY | backend/.env | API Key（也可用旧名 DEEPSEEK_API_KEY） |
 | AI_BASE_URL | backend/.env | 接口地址，默认 `https://api.openai.com/v1` |
 | AI_MODEL | backend/.env | 模型名，默认 `gpt-4o-mini` |
+| WXPUSHER_APP_TOKEN | backend/.env | [WxPusher](https://wxpusher.zjiecode.com) 应用 Token，用于微信到期提醒 |
+| WXPUSHER_DISPATCH_INTERVAL | backend/.env | 后台扫描间隔秒数，默认 60；`0` 关闭 |
 | JWT_SECRET | backend/.env | JWT 签名密钥 |
 | NEXT_PUBLIC_API_BASE | frontend/.env.local | 后端地址，默认 `http://localhost:5000` |
+
+### 微信提醒（WxPusher）配置步骤
+1. 打开 https://wxpusher.zjiecode.com 注册并创建应用，复制 `appToken`
+2. 写入 `backend/.env` 的 `WXPUSHER_APP_TOKEN=`，重启后端
+3. 登录 Vita → **我的** → 扫码绑定或填写 UID → 发送测试
+4. 创建一条已到期的提醒，点「立即检查到期」或等待后台扫描，微信会收到消息
 
 ## 📦 部署
 前端 Vercel；后端自建云服务器（Docker Compose：Flask + PostgreSQL + Caddy 自动 HTTPS）。

@@ -1,8 +1,16 @@
 from flask import Flask, jsonify
+import atexit
+import logging
+import threading
+import time
 
 from config import Config
 from extensions import db, jwt, cors
 from errors import register_error_handlers, register_jwt_error_handlers
+
+logger = logging.getLogger(__name__)
+_dispatch_stop = threading.Event()
+_dispatch_thread: threading.Thread | None = None
 
 
 def create_app(config_class=Config):
@@ -21,6 +29,7 @@ def create_app(config_class=Config):
     from blueprints.settings import settings_bp
     from blueprints.categories import categories_bp
     from blueprints.overview import overview_bp
+    from blueprints.wxpusher import wxpusher_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(me_bp)
@@ -30,6 +39,7 @@ def create_app(config_class=Config):
     app.register_blueprint(settings_bp)
     app.register_blueprint(categories_bp)
     app.register_blueprint(overview_bp)
+    app.register_blueprint(wxpusher_bp)
 
     register_error_handlers(app)
     register_jwt_error_handlers(jwt)
@@ -42,6 +52,12 @@ def create_app(config_class=Config):
         db.create_all()
         _ensure_schema()
 
+    # Flask debug 热重载时只在子进程启动后台线程，避免双开
+    import os
+
+    if (not app.debug) or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+        _start_dispatch_loop(app)
+
     return app
 
 
@@ -51,6 +67,7 @@ def _ensure_schema():
 
     stmts = [
         "ALTER TABLE assets ADD COLUMN kind VARCHAR(16) DEFAULT 'asset'",
+        "ALTER TABLE reminders ADD COLUMN notified_at DATETIME",
     ]
     with db.engine.begin() as conn:
         for sql in stmts:
@@ -68,6 +85,40 @@ def _ensure_schema():
             )
         except Exception:
             pass
+
+
+def _start_dispatch_loop(app: Flask):
+    """后台定时推送到期提醒（需配置 WXPUSHER_APP_TOKEN）。"""
+    global _dispatch_thread
+    interval = int(app.config.get("WXPUSHER_DISPATCH_INTERVAL") or 0)
+    token = (app.config.get("WXPUSHER_APP_TOKEN") or "").strip()
+    if interval <= 0 or not token:
+        return
+    if _dispatch_thread and _dispatch_thread.is_alive():
+        return
+
+    def _loop():
+        # 启动稍等，避免阻塞启动
+        time.sleep(min(15, interval))
+        while not _dispatch_stop.is_set():
+            try:
+                with app.app_context():
+                    from services.notify_service import dispatch_due_reminders
+
+                    result = dispatch_due_reminders()
+                    if result.get("sent"):
+                        logger.info("WxPusher dispatch sent=%s", result.get("sent"))
+            except Exception as e:
+                logger.warning("WxPusher dispatch error: %s", e)
+            _dispatch_stop.wait(interval)
+
+    _dispatch_thread = threading.Thread(target=_loop, name="wxpusher-dispatch", daemon=True)
+    _dispatch_thread.start()
+
+    def _stop():
+        _dispatch_stop.set()
+
+    atexit.register(_stop)
 
 
 app = create_app()
