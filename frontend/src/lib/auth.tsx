@@ -10,7 +10,7 @@ import {
 import { useRouter } from "next/navigation";
 import { apiFetch, setToken, clearToken, getToken } from "@/lib/api";
 
-export type User = { id: number; username: string };
+export type User = { id: number; username: string; created_at?: string | null };
 
 type AuthContextType = {
   user: User | null;
@@ -18,6 +18,7 @@ type AuthContextType = {
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string) => Promise<void>;
   logout: () => void;
+  setUser: (user: User | null) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -63,7 +64,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, register, logout, setUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { apiFetch, ApiError } from "@/lib/api";
@@ -160,7 +161,13 @@ export default function SettingsPage() {
   return (
     <main className="flex-1 p-4 max-w-2xl mx-auto w-full">
       <header className="mb-6">
-        <h1 className="text-xl font-semibold">设置</h1>
+        <Link
+          href="/user"
+          className="text-xs text-gray-500 hover:text-blue-600 mb-2 inline-block"
+        >
+          ← 返回我的
+        </Link>
+        <h1 className="text-xl font-semibold">AI 设置</h1>
         <p className="text-sm text-gray-500">管家性格与 AI 接口</p>
       </header>
 

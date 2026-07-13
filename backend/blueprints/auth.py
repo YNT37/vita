@@ -53,3 +53,40 @@ def me():
     if not user:
         raise ApiError("not_found", "用户不存在", 404)
     return jsonify(user.to_dict()), 200
+
+
+@me_bp.patch("/me")
+@jwt_required()
+def update_me():
+    user = db.session.get(User, int(get_jwt_identity()))
+    if not user:
+        raise ApiError("not_found", "用户不存在", 404)
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip()
+    if not username or len(username) > 64:
+        raise ApiError("invalid_username", "用户名不能为空且不超过64位", 400, "username")
+    if username != user.username and User.query.filter_by(username=username).first():
+        raise ApiError("username_taken", "用户名已存在", 409, "username")
+    user.username = username
+    db.session.commit()
+    return jsonify(user.to_dict()), 200
+
+
+@me_bp.post("/me/password")
+@jwt_required()
+def change_password():
+    user = db.session.get(User, int(get_jwt_identity()))
+    if not user:
+        raise ApiError("not_found", "用户不存在", 404)
+    data = request.get_json(silent=True) or {}
+    old_password = data.get("old_password") or ""
+    new_password = data.get("new_password") or ""
+    if not old_password or not new_password:
+        raise ApiError("invalid_input", "请填写原密码和新密码", 400)
+    if not user.check_password(old_password):
+        raise ApiError("invalid_credentials", "原密码错误", 401, "old_password")
+    if len(new_password) < 6 or len(new_password) > 128:
+        raise ApiError("invalid_password", "新密码长度需为 6-128 位", 400, "new_password")
+    user.set_password(new_password)
+    db.session.commit()
+    return jsonify({"ok": True}), 200

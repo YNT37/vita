@@ -22,7 +22,13 @@
 密码错误→401。
 
 ### `GET /api/me`
-需 JWT。`200 → { "id":1, "username":"alex" }`；无/失效 token→401。
+需 JWT。`200 → { "id":1, "username":"alex", "created_at":"2026-07-01T12:00:00Z" }`；无/失效 token→401。
+
+### `PATCH /api/me`
+需 JWT。`{ "username":"newname" }` → 更新用户名；`200 →` 同 `GET /api/me`。用户名规则同注册；重复→409。
+
+### `POST /api/me/password`
+需 JWT。`{ "old_password":"...", "new_password":"..." }` → `{ "ok":true }`。原密码错误→401；新密码需 6–128 位。
 
 ## 二、记账 Transactions（需 JWT）
 

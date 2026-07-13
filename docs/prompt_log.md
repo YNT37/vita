@@ -519,3 +519,18 @@ await apiFetch(`/api/assets/${id}`, { method: "PATCH", body: { name, balance, ki
 ```
 
 - 采纳情况：全部采纳。
+
+---
+
+### #21 · 2026-07-13 · Cursor(Grok) · 用户页与页面结构整理
+- 对应功能/文件：`frontend/src/app/user/page.tsx`、`AppShell.tsx`、`page.tsx`、`settings/page.tsx`；`backend/blueprints/auth.py`、`models.py`；`docs/*`、`README.md`
+- Prompt：
+  > 完成用户页面，然后整理一下页面结构吧
+- AI 原始输出：
+
+```tsx
+// 底栏：管家/统计/记账/提醒/我的；/settings 从「我的」进入
+// GET/PATCH /api/me、POST /api/me/password；账号摘要 + 退出
+```
+
+- 采纳情况：全部采纳。职责划分：`/user`=账号中心，`/settings`=AI 配置子页。

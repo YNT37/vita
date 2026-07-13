@@ -19,7 +19,11 @@ class User(db.Model):
         return check_password_hash(self.password_hash, raw)
 
     def to_dict(self):
-        return {"id": self.id, "username": self.username}
+        return {
+            "id": self.id,
+            "username": self.username,
+            "created_at": self.created_at.isoformat() + "Z" if self.created_at else None,
+        }
 
 
 class Category(db.Model):

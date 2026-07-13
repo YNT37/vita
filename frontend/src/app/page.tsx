@@ -13,7 +13,7 @@ import {
 } from "@/lib/persona";
 
 export default function HomePage() {
-  const { user, loading: authLoading, logout } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { bump } = useDataRefresh();
   const router = useRouter();
 
@@ -168,15 +168,16 @@ export default function HomePage() {
         <div>
           <h1 className="text-xl font-semibold">Vita</h1>
           <p className="text-sm text-gray-500">
-            你的{PERSONA_LABELS[persona]} · {user.username}
+            你的{PERSONA_LABELS[persona]} ·{" "}
+            <button
+              type="button"
+              onClick={() => router.push("/user")}
+              className="hover:text-blue-600 hover:underline"
+            >
+              {user.username}
+            </button>
           </p>
         </div>
-        <button
-          onClick={logout}
-          className="text-xs text-gray-500 hover:text-gray-700 border border-black/15 dark:border-white/20 rounded-lg px-2 py-1"
-        >
-          退出
-        </button>
       </header>
 
       <section className="rounded-2xl border border-black/10 dark:border-white/15 p-3 mb-3 shrink-0">

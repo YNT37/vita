@@ -9,8 +9,15 @@ const NAV = [
   { href: "/stats", label: "统计", icon: "📊" },
   { href: "/records", label: "记账", icon: "💰" },
   { href: "/reminders", label: "提醒", icon: "⏰" },
-  { href: "/settings", label: "设置", icon: "⚙️" },
+  { href: "/user", label: "我的", icon: "👤" },
 ];
+
+function isNavActive(pathname: string, href: string) {
+  if (href === "/user") {
+    return pathname === "/user" || pathname.startsWith("/settings");
+  }
+  return pathname === href;
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -27,7 +34,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="fixed bottom-0 inset-x-0 border-t border-black/10 dark:border-white/15 bg-[var(--background)]/95 backdrop-blur z-50">
         <div className="max-w-2xl mx-auto flex">
           {NAV.map((item) => {
-            const active = pathname === item.href;
+            const active = isNavActive(pathname, item.href);
             return (
               <Link
                 key={item.href}
