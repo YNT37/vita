@@ -15,6 +15,7 @@ from services.ai_service import (
     understand_message,
 )
 from services.prompts import PERSONA_OPTIONS
+from services.user_context import build_user_context
 from services.user_settings import get_persona, set_persona, resolve_ai_config
 
 ai_bp = Blueprint("ai", __name__, url_prefix="/api")
@@ -35,40 +36,8 @@ def _load_history(user_id, persona):
     return [{"role": r.role, "content": r.content} for r in rows]
 
 
-def _user_context(user_id):
-    today = date.today()
-    end = datetime.combine(today, datetime.max.time())
-
-    txns = (
-        Transaction.query.filter_by(user_id=user_id, date=today)
-        .order_by(Transaction.id.desc())
-        .all()
-    )
-    reminders = (
-        Reminder.query.filter(
-            Reminder.user_id == user_id,
-            Reminder.done.is_(False),
-            Reminder.due_at <= end,
-        )
-        .order_by(Reminder.due_at.asc())
-        .all()
-    )
-    assets = (
-        Asset.query.filter_by(user_id=user_id)
-        .order_by(Asset.updated_at.desc(), Asset.id.desc())
-        .all()
-    )
-
-    expense_total = sum(float(t.amount) for t in txns if t.type == "expense")
-    income_total = sum(float(t.amount) for t in txns if t.type == "income")
-
-    return {
-        "transactions_today": [t.to_dict() for t in txns],
-        "reminders_today": [r.to_dict() for r in reminders],
-        "assets": [a.to_dict() for a in assets],
-        "expense_total": expense_total,
-        "income_total": income_total,
-    }
+def _today_brief_context(user_id):
+    return build_user_context(user_id)
 
 
 @ai_bp.get("/persona")
@@ -105,7 +74,7 @@ def ai_chat():
     persona = get_persona(uid)
     ai_cfg = resolve_ai_config(uid)
     history = _load_history(uid, persona)
-    context = _user_context(uid)
+    context = build_user_context(uid)
 
     understanding = understand_message(message, context, ai_cfg)
     query_answer = None
@@ -115,7 +84,7 @@ def ai_chat():
 
     action_note = execute_intent(uid, understanding)
     if action_note:
-        context = _user_context(uid)
+        context = build_user_context(uid)
         if understanding.get("intent") == "query":
             topic = (understanding.get("data") or {}).get("topic", "overview")
             query_answer = answer_query(topic, context)
@@ -148,7 +117,7 @@ def ai_brief():
     uid = _uid()
     persona = get_persona(uid)
     ai_cfg = resolve_ai_config(uid)
-    context = _user_context(uid)
+    context = _today_brief_context(uid)
     text = generate_brief(persona, context, ai_config=ai_cfg)
     return jsonify({"text": text}), 200
 

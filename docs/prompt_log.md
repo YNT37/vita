@@ -414,3 +414,26 @@ def _get_llm(provider, api_key, base_url, model):
 ```
 
 - 采纳情况：全部采纳。Anthropic 仅需 Key + Model；Base URL 留空走官方端点，代理时可填。
+
+---
+
+### #15 · 2026-07-13 · Cursor(Claude) · 统计中心与分类/资产管理
+- 对应功能/文件：`frontend/src/app/stats/page.tsx`、`backend/blueprints/overview.py`、`categories.py`、`services/category_service.py`、`services/user_context.py`；`models.py`（UserCategory）；`AppShell.tsx`、`records/page.tsx`；`docs/API文档.md`
+- Prompt：
+  > 还需要建立一个统计页面，可以设置分类、账户信息等，可以查看资产视图、待办事件等，也方便ai记入数据、调用数据，或理解意图
+- AI 原始输出：
+
+```python
+@overview_bp.get("/overview")
+def get_overview():
+    return jsonify({month, stats, assets, assets_total, reminders_pending, categories})
+
+class UserCategory(db.Model):
+    user_id, name, kind  # expense/income
+```
+
+```tsx
+// /stats 四 Tab：概览 / 资产 / 待办 / 分类
+```
+
+- 采纳情况：全部采纳。AI 上下文通过 `build_user_context()` 注入分类、资产、月度统计与待办。

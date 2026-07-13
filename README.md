@@ -30,6 +30,7 @@ vita/
 | `/login` | 登录 | ✅ |
 | `/register` | 注册 | ✅ |
 | `/` | **AI 管家（主页）** | ✅ |
+| `/stats` | 统计中心（概览/资产/待办/分类） | ✅ |
 | `/records` | 记账 | ✅ |
 | `/reminders` | 提醒 | ✅ |
 | `/settings` | 设置（性格 / API Key） | ✅ |

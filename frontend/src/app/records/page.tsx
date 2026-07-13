@@ -30,6 +30,8 @@ const TYPE_LABELS: Record<TxnType, string> = {
 
 const QUICK_CATEGORIES = ["餐饮", "交通", "购物", "居住", "工资", "其他"];
 
+type CategoryRow = { id: number; name: string; kind: TxnType };
+
 function pad(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -62,6 +64,7 @@ export default function RecordsPage() {
   const [type, setType] = useState<TxnType>("expense");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("餐饮");
+  const [categories, setCategories] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [date, setDate] = useState(todayDate);
 
@@ -89,6 +92,17 @@ export default function RecordsPage() {
   useEffect(() => {
     if (user) load();
   }, [user, load]);
+
+  useEffect(() => {
+    if (!user) return;
+    apiFetch<CategoryRow[]>(`/api/categories?kind=${type}`)
+      .then((cats) => {
+        const names = cats.map((c) => c.name);
+        setCategories(names.length > 0 ? names : QUICK_CATEGORIES);
+        setCategory((prev) => (names.includes(prev) ? prev : names[0] || prev));
+      })
+      .catch(() => setCategories(QUICK_CATEGORIES));
+  }, [user, type]);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -242,7 +256,7 @@ export default function RecordsPage() {
           <div>
             <label className="block text-sm mb-1">分类</label>
             <div className="flex flex-wrap gap-2 mb-2">
-              {QUICK_CATEGORIES.map((c) => (
+              {categories.map((c) => (
                 <button
                   key={c}
                   type="button"

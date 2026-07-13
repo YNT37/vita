@@ -19,6 +19,8 @@ def create_app(config_class=Config):
     from blueprints.reminders import reminders_bp
     from blueprints.ai import ai_bp
     from blueprints.settings import settings_bp
+    from blueprints.categories import categories_bp
+    from blueprints.overview import overview_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(me_bp)
@@ -26,6 +28,8 @@ def create_app(config_class=Config):
     app.register_blueprint(reminders_bp)
     app.register_blueprint(ai_bp)
     app.register_blueprint(settings_bp)
+    app.register_blueprint(categories_bp)
+    app.register_blueprint(overview_bp)
 
     register_error_handlers(app)
     register_jwt_error_handlers(jwt)

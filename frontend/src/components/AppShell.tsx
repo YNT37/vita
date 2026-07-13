@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 
 const NAV = [
   { href: "/", label: "管家", icon: "🤖" },
+  { href: "/stats", label: "统计", icon: "📊" },
   { href: "/records", label: "记账", icon: "💰" },
   { href: "/reminders", label: "提醒", icon: "⏰" },
   { href: "/settings", label: "设置", icon: "⚙️" },

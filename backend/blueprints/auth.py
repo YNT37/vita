@@ -4,6 +4,7 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from extensions import db
 from models import User
 from errors import ApiError
+from services.category_service import seed_user_categories
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 me_bp = Blueprint("me", __name__, url_prefix="/api")
@@ -29,6 +30,7 @@ def register():
     user.set_password(password)
     db.session.add(user)
     db.session.commit()
+    seed_user_categories(user.id)
     return jsonify(user.to_dict()), 201
 
 

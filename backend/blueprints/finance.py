@@ -169,3 +169,14 @@ def upsert_asset():
         db.session.add(asset)
     db.session.commit()
     return jsonify(asset.to_dict()), 200
+
+
+@finance_bp.delete("/assets/<int:asset_id>")
+@jwt_required()
+def delete_asset(asset_id):
+    asset = Asset.query.filter_by(id=asset_id, user_id=_uid()).first()
+    if not asset:
+        raise ApiError("not_found", "资产不存在", 404)
+    db.session.delete(asset)
+    db.session.commit()
+    return jsonify({"ok": True}), 200

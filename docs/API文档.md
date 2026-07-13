@@ -28,11 +28,23 @@
 
 - `GET /api/assets` → 资产余额列表
 - `POST /api/assets` `{name,balance,note?}` → 记录/更新资产余额（同名覆盖）
+- `DELETE /api/assets/<id>` → `{"ok":true}`
+- `GET /api/transactions?month=YYYY-MM` → 列表（仅本人）
 - `POST /api/transactions` `{type(income/expense),amount>0,category,note,date}` → 201
 - `DELETE /api/transactions/<id>` → `{"ok":true}`；不存在/越权→404
 - `GET /api/stats/summary?month=` → `{income,expense,byCategory[],byDay[]}`
 
 校验：type 合法、amount 数字且>0、date 合法，非法→400。
+
+### 分类 Categories（需 JWT）
+
+- `GET /api/categories?kind=expense|income` → 用户分类列表（首次访问自动种子默认分类）
+- `POST /api/categories` `{name,kind}` → 201
+- `DELETE /api/categories/<id>` → `{"ok":true}`
+
+### 统计概览 Overview（需 JWT）
+
+- `GET /api/overview?month=YYYY-MM` → `{month,stats,assets,assets_total,reminders_pending,reminders_overdue_count,categories}`
 
 ## 三、提醒 Reminders（需 JWT）
 

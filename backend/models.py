@@ -32,6 +32,18 @@ class Category(db.Model):
         return {"id": self.id, "name": self.name, "kind": self.kind}
 
 
+class UserCategory(db.Model):
+    """用户自定义收支分类。"""
+    __tablename__ = "user_categories"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    name = db.Column(db.String(32), nullable=False)
+    kind = db.Column(db.String(16), nullable=False)  # expense / income
+
+    def to_dict(self):
+        return {"id": self.id, "name": self.name, "kind": self.kind}
+
+
 class Transaction(db.Model):
     __tablename__ = "transactions"
     id = db.Column(db.Integer, primary_key=True)
