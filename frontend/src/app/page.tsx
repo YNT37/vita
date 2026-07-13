@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { useDataRefresh } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
 import {
   type PersonaId,
@@ -13,6 +14,7 @@ import {
 
 export default function HomePage() {
   const { user, loading: authLoading, logout } = useAuth();
+  const { bump } = useDataRefresh();
   const router = useRouter();
 
   const [persona, setPersona] = useState<PersonaId>("butler");
@@ -69,11 +71,18 @@ export default function HomePage() {
     setChatInput("");
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     try {
-      const res = await apiFetch<{ reply: string }>("/api/ai/chat", {
-        method: "POST",
-        body: { message: text },
-      });
+      const res = await apiFetch<{ reply: string; action?: string | null }>(
+        "/api/ai/chat",
+        {
+          method: "POST",
+          body: { message: text },
+        }
+      );
       setMessages((prev) => [...prev, { role: "assistant", content: res.reply }]);
+      if (res.action) {
+        bump();
+        await loadBrief();
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "发送失败");
     } finally {
@@ -115,6 +124,7 @@ export default function HomePage() {
       }
       setParseInput("");
       setParseResult(null);
+      bump();
       await loadBrief();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "写入失败");

@@ -437,3 +437,18 @@ class UserCategory(db.Model):
 ```
 
 - 采纳情况：全部采纳。AI 上下文通过 `build_user_context()` 注入分类、资产、月度统计与待办。
+
+---
+
+### #16 · 2026-07-13 · Cursor(Claude) · 跨页面数据同步
+- 对应功能/文件：`frontend/src/lib/data-refresh.tsx`、`layout.tsx`；`page.tsx`、`records/page.tsx`、`stats/page.tsx`、`reminders/page.tsx`
+- Prompt：
+  > 让ai记账无法同步到其他页面
+- AI 原始输出：
+
+```tsx
+// DataRefreshProvider + bump() 全局刷新信号
+// AI chat 返回 action 时 bump()；各页 useAutoReload(load) 监听 version 与路由切换
+```
+
+- 采纳情况：全部采纳。

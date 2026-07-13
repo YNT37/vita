@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { useAutoReload, useDataRefresh } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
 
 type TxnType = "income" | "expense";
@@ -52,6 +53,7 @@ function formatMoney(n: number): string {
 
 export default function RecordsPage() {
   const { user, loading: authLoading } = useAuth();
+  const { bump } = useDataRefresh();
   const router = useRouter();
 
   const [month, setMonth] = useState(currentMonth);
@@ -89,9 +91,7 @@ export default function RecordsPage() {
     }
   }, [month]);
 
-  useEffect(() => {
-    if (user) load();
-  }, [user, load]);
+  useAutoReload(load, !!user);
 
   useEffect(() => {
     if (!user) return;
@@ -134,6 +134,7 @@ export default function RecordsPage() {
       });
       setAmount("");
       setNote("");
+      bump();
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "记账失败");
@@ -146,6 +147,7 @@ export default function RecordsPage() {
     setError("");
     try {
       await apiFetch(`/api/transactions/${id}`, { method: "DELETE" });
+      bump();
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "删除失败");

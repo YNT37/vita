@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { useAutoReload, useDataRefresh } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
 
 type ReminderType = "bill" | "life" | "anniversary";
@@ -51,6 +52,7 @@ function isDueSoon(iso: string): boolean {
 
 export default function RemindersPage() {
   const { user, loading: authLoading } = useAuth();
+  const { bump } = useDataRefresh();
   const router = useRouter();
 
   const [items, setItems] = useState<Reminder[]>([]);
@@ -80,9 +82,7 @@ export default function RemindersPage() {
     }
   }, []);
 
-  useEffect(() => {
-    if (user) load();
-  }, [user, load]);
+  useAutoReload(load, !!user);
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -115,6 +115,7 @@ export default function RemindersPage() {
       setDueAt("");
       setType("life");
       setNote("");
+      bump();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "新增失败");
     } finally {
@@ -130,6 +131,7 @@ export default function RemindersPage() {
         body: { done: !item.done },
       });
       setItems((prev) => prev.map((r) => (r.id === item.id ? updated : r)));
+      bump();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "更新失败");
     }
@@ -140,6 +142,7 @@ export default function RemindersPage() {
     try {
       await apiFetch(`/api/reminders/${id}`, { method: "DELETE" });
       setItems((prev) => prev.filter((r) => r.id !== id));
+      bump();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "删除失败");
     }

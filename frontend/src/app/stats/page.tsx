@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import { useAutoReload, useDataRefresh } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
 
 type TxnType = "income" | "expense";
@@ -69,6 +70,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 export default function StatsPage() {
   const { user, loading: authLoading } = useAuth();
+  const { bump } = useDataRefresh();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("overview");
   const [month, setMonth] = useState(currentMonth);
@@ -104,9 +106,7 @@ export default function StatsPage() {
     }
   }, [month]);
 
-  useEffect(() => {
-    if (user) load();
-  }, [user, load]);
+  useAutoReload(load, !!user);
 
   async function saveAsset(e: React.FormEvent) {
     e.preventDefault();
@@ -124,6 +124,7 @@ export default function StatsPage() {
       });
       setAssetName("");
       setAssetBalance("");
+      bump();
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "保存失败");
@@ -136,6 +137,7 @@ export default function StatsPage() {
     setError("");
     try {
       await apiFetch(`/api/assets/${id}`, { method: "DELETE" });
+      bump();
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "删除失败");
@@ -153,6 +155,7 @@ export default function StatsPage() {
         body: { name: newCatName.trim(), kind: newCatKind },
       });
       setNewCatName("");
+      bump();
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "添加失败");
@@ -165,6 +168,7 @@ export default function StatsPage() {
     setError("");
     try {
       await apiFetch(`/api/categories/${id}`, { method: "DELETE" });
+      bump();
       await load();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "删除失败");
