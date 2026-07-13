@@ -166,7 +166,13 @@ export default function RecordsPage() {
     <main className="flex-1 p-6 max-w-2xl mx-auto w-full">
       <header className="mb-6">
         <h1 className="text-xl font-semibold">记账理财</h1>
-        <p className="text-sm text-gray-500">记一笔 · 查看本月收支</p>
+        <p className="text-sm text-gray-500">
+          记一笔收支流水。账户余额/负债请到{" "}
+          <a href="/stats" className="text-blue-600 hover:underline">
+            统计 → 资产
+          </a>{" "}
+          查看。
+        </p>
       </header>
 
       <div className="flex items-center gap-3 mb-6">

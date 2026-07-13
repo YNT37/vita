@@ -489,3 +489,18 @@ actions = _regex_extract_batch(text)  # 基金/微信/... + 花呗还款提醒
 ```
 
 - 采纳情况：全部采纳。根因是 AI 闲聊复述未落库；现支持批量写入并强制以系统数据为准。
+
+---
+
+### #19 · 2026-07-13 · Cursor(Claude) · 修复口语账户名与同步指令落库
+- 对应功能/文件：`backend/services/ai_service.py`、`blueprints/ai.py`；`frontend/src/app/page.tsx`、`records/page.tsx`
+- Prompt：
+  > 还是不行啊？（用户原话：建设银行卡/工商银行卡、花呗欠款、还款日期7.25、帮我同步）
+- AI 原始输出：
+
+```python
+# 建设银行→建行，欠款→欠，7.25→日期；「同步/需要」从历史用户消息找回明细再 batch 写入
+understanding = understand_message(message, context, ai_cfg, history_text=...)
+```
+
+- 采纳情况：全部采纳。并说明「记账页」只显示流水，资产在「统计→资产」。

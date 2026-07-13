@@ -87,15 +87,16 @@ export default function HomePage() {
     setChatInput("");
     setMessages((prev) => [...prev, { role: "user", content: text }]);
     try {
-      const res = await apiFetch<{ reply: string; action?: string | null }>(
-        "/api/ai/chat",
-        {
-          method: "POST",
-          body: { message: text },
-        }
-      );
+      const res = await apiFetch<{
+        reply: string;
+        action?: string | null;
+        wrote?: boolean;
+      }>("/api/ai/chat", {
+        method: "POST",
+        body: { message: text },
+      });
       setMessages((prev) => [...prev, { role: "assistant", content: res.reply }]);
-      if (res.action) {
+      if (res.action || res.wrote) {
         bump();
         await loadBrief();
       }

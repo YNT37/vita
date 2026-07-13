@@ -165,7 +165,27 @@ def _strip_json(raw: str) -> str:
         raw = re.sub(r"^```(?:json)?\s*", "", raw)
         raw = re.sub(r"\s*```$", "", raw)
     return raw.strip()
+def _normalize_finance_text(text: str) -> str:
+    """统一口语账户名，便于规则提取。"""
+    text = text or ""
+    text = text.replace("欠款", "欠")
+    replacements = (
+        (r"建设银行(?:卡|储蓄卡|借记卡)?", "建行"),
+        (r"建行(?:卡|储蓄卡|借记卡)", "建行"),
+        (r"工商银行(?:卡|储蓄卡|借记卡)?", "工行"),
+        (r"工行(?:卡|储蓄卡|借记卡)", "工行"),
+        (r"招商银行(?:卡)?", "招行"),
+        (r"农业银行(?:卡)?", "农行"),
+        (r"中国银行(?:卡)?", "中行"),
+        (r"交通银行(?:卡)?", "交行"),
+        (r"京东白条", "京东白条"),
+    )
+    for pat, name in replacements:
+        text = re.sub(pat, name, text)
+    return text
+
 def _extract_asset_name(text: str) -> str:
+    text = _normalize_finance_text(text)
     for kw in ASSET_KEYWORDS:
         if kw in text:
             return kw
@@ -181,7 +201,7 @@ def _is_liability_name(name: str) -> bool:
     return any(k in (name or "") for k in LIABILITY_KEYWORDS)
 
 def _parse_cn_due(text: str, default_hour: int = 10) -> str:
-    """把「7月25日」「25号还」等解析为今年 ISO 时间。"""
+    """把「7月25日」「7.25」「25号还」等解析为今年 ISO 时间。"""
     now = datetime.now()
     year = now.year
     m = re.search(r"(?:(\d{4})年)?\s*(\d{1,2})月\s*(\d{1,2})[日号]?", text)
@@ -192,7 +212,18 @@ def _parse_cn_due(text: str, default_hour: int = 10) -> str:
             return datetime(y, month, day, default_hour, 0).strftime("%Y-%m-%dT%H:%M")
         except ValueError:
             pass
-    m = re.search(r"(?<!\d)(\d{1,2})[日号](?:还|到期|还款)?", text)
+    m = re.search(r"(?<!\d)(\d{1,2})\.(\d{1,2})(?!\d)", text)
+    if m:
+        month, day = int(m.group(1)), int(m.group(2))
+        if 1 <= month <= 12 and 1 <= day <= 31:
+            try:
+                due = datetime(year, month, day, default_hour, 0)
+                if due.date() < now.date() and month < now.month:
+                    due = datetime(year + 1, month, day, default_hour, 0)
+                return due.strftime("%Y-%m-%dT%H:%M")
+            except ValueError:
+                pass
+    m = re.search(r"(?:每个月|每月|每月的)?\s*(\d{1,2})[日号]", text)
     if m:
         day = int(m.group(1))
         month = now.month
@@ -210,42 +241,57 @@ def _parse_cn_due(text: str, default_hour: int = 10) -> str:
 
 def _looks_like_balance(text: str) -> bool:
     if re.search(r"多少|多少钱|什么情况|怎么样|查看|查询", text) and not re.search(
-        r"余额为|余额是|还有\d|剩\d", text
+        r"余额为|余额是|还有\d|剩\d|记一下|同步|录入", text
     ):
         return False
     return bool(
         re.search(
-            r"余额|结余|还剩|剩了|剩下|账户|基金|微信|支付宝|建行|工行|招行|"
-            r"花呗|白条|更新了|查了下|看了看|刚看|整理|汇报",
+            r"余额|结余|还剩|剩了|剩下|账户|资产|基金|微信|支付宝|建行|工行|招行|"
+            r"银行|花呗|白条|更新了|查了下|看了看|刚看|整理|汇报|记一下|同步|录入",
             text,
         )
     )
 
 def _looks_like_finance_report(text: str) -> bool:
     """是否像一次汇报多账户/多负债。"""
+    text = _normalize_finance_text(text)
     money_hits = re.findall(r"\d+(?:\.\d{1,2})?", text)
     name_hits = sum(1 for kw in ASSET_KEYWORDS if kw in text)
+    if "银行" in text:
+        name_hits += 1
     return len(money_hits) >= 2 and name_hits >= 2
+
+def _looks_like_sync_request(text: str) -> bool:
+    return bool(
+        re.search(
+            r"同步|重新录入|重新记|需要|记下来|写入|帮我记|录入|补上|记入|再记|保存资产|记录账户",
+            text or "",
+        )
+    )
 
 def _regex_extract_batch(text: str) -> list[dict]:
     """规则提取多账户余额 + 负债还款提醒。"""
+    text = _normalize_finance_text(text)
     actions: list[dict] = []
     seen_assets: set[str] = set()
 
-    # 花呗/白条 + 金额 → reminder + 负债账户；日期只在后续短窗口内找
+    # 花呗/白条 + 金额 → reminder + 负债账户
     debt_pat = re.compile(
-        r"(花呗|京东白条|白条|借呗|信用卡)\s*(?:欠|待还|还)?\s*"
+        r"(花呗|京东白条|白条|借呗|信用卡)\s*(?:欠款|欠|待还|还)?\s*"
         r"(\d+(?:\.\d{1,2})?)\s*元?"
     )
     for m in debt_pat.finditer(text):
         name, amount_s = m.group(1), m.group(2)
         amount = float(amount_s)
-        window = text[m.end() : m.end() + 48]
+        window = text[m.end() : m.end() + 56]
         cut = re.search(r"花呗|京东白条|白条|借呗|信用卡", window)
         if cut:
             window = window[: cut.start()]
         due = _parse_cn_due(window)
-        installment = re.search(r"每期\s*(\d+(?:\.\d{1,2})?)", window)
+        installment = re.search(
+            r"(?:每期|每个月还|每月还)\s*(\d+(?:\.\d{1,2})?)",
+            window,
+        )
         pay = float(installment.group(1)) if installment else amount
         title = f"还{name} {pay:g}元" if installment else f"还{name} {amount:g}元"
         actions.append(
@@ -268,7 +314,7 @@ def _regex_extract_batch(text: str) -> list[dict]:
                 }
             )
 
-    # 通用：账户名 + 金额（基金1901.74 / 微信：57.6 / 建行余额270.29）
+    # 账户名 + 金额
     asset_pat = re.compile(
         r"(基金|余额宝|股票|微信|支付宝|建行|工行|招行|农行|中行|交行|现金|理财|"
         r"银行卡|储蓄卡)"
@@ -279,8 +325,6 @@ def _regex_extract_batch(text: str) -> list[dict]:
     for m in asset_pat.finditer(text):
         name, amount_s = m.group(1), m.group(2)
         if _is_liability_name(name):
-            continue
-        if name in ("每期", "合计", "总共", "一共", "今日", "本月"):
             continue
         if name in seen_assets:
             continue
@@ -558,19 +602,32 @@ def understand_message(
     message: str,
     context: dict | None = None,
     ai_config: dict | None = None,
+    history_text: str | None = None,
 ) -> dict:
     """统一意图理解：LLM 优先，规则兜底；多账户汇报强制批量写入。"""
     message = _truncate(message, MAX_CONTENT_LEN)
     if not message:
         return {"intent": "unknown", "should_act": False, "data": {}, "actions": [], "summary": ""}
 
+    # 「同步/需要/记下来」但没带数字 → 从近期对话找回财务明细再写入
+    source = message
+    if _looks_like_sync_request(message) and not _looks_like_finance_report(message):
+        hist = (history_text or "").strip()
+        if hist and _looks_like_finance_report(hist):
+            source = hist
+        elif hist:
+            # 拼最近用户话，尽量捞出含金额的句子
+            money_lines = [
+                ln for ln in hist.splitlines()
+                if re.search(r"\d+(?:\.\d{1,2})?", ln) and re.search(r"基金|微信|银行|花呗|白条|资产", ln)
+            ]
+            if money_lines:
+                source = "\n".join(money_lines[-3:])
+
     # 多账户汇报：规则优先，避免 LLM 只闲聊不落库
-    if _looks_like_finance_report(message):
-        actions = _regex_extract_batch(message)
+    if _looks_like_finance_report(source):
+        actions = _regex_extract_batch(source)
         if len(actions) >= 2:
-            llm = _llm_understand(message, context, ai_config)
-            if llm and llm.get("intent") == "batch" and len(llm.get("actions") or []) >= len(actions):
-                return llm
             return {
                 "intent": "batch",
                 "should_act": True,
@@ -581,9 +638,10 @@ def understand_message(
 
     result = _llm_understand(message, context, ai_config)
     if result and result.get("intent") != "unknown":
-        # LLM 判成 chat/query 但文本明显是汇报 → 再走规则
-        if result["intent"] in ("chat", "query") and _looks_like_balance(message):
-            actions = _regex_extract_batch(message)
+        if result["intent"] in ("chat", "query") and (
+            _looks_like_balance(source) or _looks_like_finance_report(source)
+        ):
+            actions = _regex_extract_batch(source)
             if actions:
                 return {
                     "intent": "batch" if len(actions) > 1 else actions[0]["intent"],
@@ -593,7 +651,7 @@ def understand_message(
                     "summary": "纠正为财务写入",
                 }
         return result
-    return _fallback_understand(message, context)
+    return _fallback_understand(source, context)
 
 def execute_intent(user_id: int, understanding: dict) -> str | None:
     actions = understanding.get("actions") or []
