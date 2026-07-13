@@ -549,3 +549,17 @@ await apiFetch(`/api/assets/${id}`, { method: "PATCH", body: { name, balance, ki
 ```
 
 - 采纳情况：全部采纳。
+
+---
+
+### #23 · 2026-07-13 · Cursor(Grok) · 一句话录入改为录入确认
+- 对应功能/文件：`frontend/src/app/page.tsx`
+- Prompt：
+  > 管家页面的一句话录入改成录入确定吧，用来检查ai有理解我的意思
+- AI 原始输出：
+
+```tsx
+// 「录入确认」：理解一下 → 展示 AI 理解 → 理解正确写入 / 理解错了
+```
+
+- 采纳情况：全部采纳。
