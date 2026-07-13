@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
-import { useDataRefresh } from "@/lib/data-refresh";
+import { useAutoReload, useDataRefresh } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
 import {
   type PersonaId,
@@ -36,6 +36,15 @@ export default function HomePage() {
     if (!authLoading && !user) router.replace("/login");
   }, [authLoading, user, router]);
 
+  const loadHistory = useCallback(async () => {
+    try {
+      const res = await apiFetch<{ messages: ChatMsg[] }>("/api/ai/chat/history");
+      setMessages(res.messages);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "对话记录加载失败");
+    }
+  }, []);
+
   const loadBrief = useCallback(async () => {
     setBriefLoading(true);
     try {
@@ -52,15 +61,22 @@ export default function HomePage() {
     try {
       const res = await apiFetch<{ current: PersonaId }>("/api/persona");
       setPersona(res.current);
-      await loadBrief();
+      await Promise.all([loadBrief(), loadHistory()]);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "加载失败");
     }
-  }, [loadBrief]);
+  }, [loadBrief, loadHistory]);
 
   useEffect(() => {
     if (user) loadPersona();
   }, [user, loadPersona]);
+
+  const reloadHome = useCallback(async () => {
+    if (!user) return;
+    await Promise.all([loadBrief(), loadHistory()]);
+  }, [user, loadBrief, loadHistory]);
+
+  useAutoReload(reloadHome, !!user);
 
   async function sendChat(e: React.FormEvent) {
     e.preventDefault();

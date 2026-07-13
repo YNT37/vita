@@ -452,3 +452,24 @@ class UserCategory(db.Model):
 ```
 
 - 采纳情况：全部采纳。
+
+---
+
+### #17 · 2026-07-13 · Cursor(Claude) · 聊天记录持久化加载
+- 对应功能/文件：`backend/blueprints/ai.py`（GET /api/ai/chat/history）；`frontend/src/app/page.tsx`
+- Prompt：
+  > 每次切换页面ai聊天记录就没了
+- AI 原始输出：
+
+```python
+@ai_bp.get("/ai/chat/history")
+def ai_chat_history():
+    return jsonify({"persona": persona, "messages": [...]})
+```
+
+```tsx
+await apiFetch("/api/ai/chat/history");
+setMessages(res.messages);
+```
+
+- 采纳情况：全部采纳。对话按角色分库存储，切页回来自动加载。
