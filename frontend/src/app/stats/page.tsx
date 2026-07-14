@@ -515,8 +515,8 @@ export default function StatsPage() {
                       setNewAsset({ ...newAsset, kind: e.target.value as AssetKind })
                     }
                   >
-                    <option value="asset">资产</option>
-                    <option value="liability">负债</option>
+                    <option value="asset">资产（银行卡/基金等）</option>
+                    <option value="liability">负债/信用账户（花呗/月付等）</option>
                   </select>
                   <input
                     className={inputCls}
@@ -524,6 +524,9 @@ export default function StatsPage() {
                     value={newAsset.note}
                     onChange={(e) => setNewAsset({ ...newAsset, note: e.target.value })}
                   />
+                  <p className="text-xs text-gray-400 sm:col-span-2">
+                    信用账户也可对管家说：「新建信用账户叫某某，每月X号还」。未收录的产品名请选「负债/信用账户」或对话时标明是信用账户。
+                  </p>
                   <button
                     type="submit"
                     disabled={saving}
@@ -909,7 +912,7 @@ function AssetEditableList({
                   }
                 >
                   <option value="asset">资产</option>
-                  <option value="liability">负债</option>
+                  <option value="liability">负债/信用账户</option>
                 </select>
                 <input
                   className={inputCls}

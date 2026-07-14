@@ -59,6 +59,8 @@ data：
 - 「花呗支付500」「用花呗付了300」→ transaction(expense)+account=花呗；禁止写成 balance 把花呗设为500
 - 「京东白条支付50」→ transaction + 若尚无周期提醒则同时给出 monthly reminder；并说明计入本月/下月账单
 - 「抖音月付支付300」→ transaction(account=抖音月付) + monthly reminder；即使资产列表尚无该账户也要新建
+- 「新建信用账户叫合花」「合花是信用账户，欠200」「添加负债账户抖音月付」→ balance(kind=liability) + monthly reminder
+- 用户明确说「信用账户/负债账户」时，kind 必须为 liability，并尽量同步周期还款提醒
 - 「白条支付300分3期」→ transaction + 每一期一张 reminder（含期数与金额）
 - 「吃饭花了50，工商银行付款」→ transaction(expense,餐饮)+account=工行
 - 提到花呗/白条/借呗/信用卡欠款（欠/待还/应还）时，必须同时给出：① balance（kind=liability）② reminder（type=bill，含还款日）
@@ -77,6 +79,9 @@ data：
 
 用户：「京东白条支付50」
 → transaction：expense 50，account=京东白条 + monthly reminder
+
+用户：「新建信用账户叫合花，欠0，每月15号还」
+→ batch：balance(合花,0,liability) + reminder(还合花, monthly, due 每月15号)
 
 用户：「白条300分3期」
 → transaction 300 + 3 张分期 reminder
@@ -810,7 +815,14 @@ def _normalize_one_action(intent: str, data: dict, source_text: str) -> dict | N
             note = ("负债欠款；" + note).strip("；")[:200]
         kind = (data.get("kind") or "").strip()
         if kind not in ("asset", "liability"):
-            kind = "liability" if _is_liability_name(name) else "asset"
+            if _looks_like_credit_account_create(source_text) or re.search(
+                r"信用账户|负债账户|信用付", source_text
+            ):
+                kind = "liability"
+            else:
+                kind = "liability" if _is_liability_name(name) else "asset"
+        if kind == "liability" and "负债" not in note and "信用" not in note:
+            note = ("信用/负债账户；" + note).strip("；")[:200]
         return {
             "intent": "balance",
             "data": {"name": name, "balance": balance, "kind": kind, "note": note},
@@ -1078,87 +1090,121 @@ def _enrich_credit_payment_actions(
     explains: list[str] = []
     reminders = _collect_context_reminders(context, user_id)
 
-    # 找信用账户相关的支出
-    credit_txns = []
+    # 找信用账户相关的支出 / 新建负债账户
+    liability_names = {
+        str(a.get("name") or "").strip()
+        for a in (context or {}).get("assets") or []
+        if (a.get("kind") or "") == "liability"
+    }
+
+    credit_targets: list[tuple[dict, str, dict, str]] = []
     for a in out:
-        if a.get("intent") != "transaction":
-            continue
-        data = a.get("data") or {}
-        if (data.get("type") or "expense") != "expense":
-            continue
-        account = normalize_product(data.get("account") or "")
-        if not is_credit_product(account):
-            continue
-        credit_txns.append((a, account, data))
+        data = dict(a.get("data") or {})
+        if a.get("intent") == "transaction":
+            if (data.get("type") or "expense") != "expense":
+                continue
+            account = (data.get("account") or "").strip()
+            product = normalize_product(account) or account
+            if not product:
+                continue
+            if not (
+                is_credit_product(product)
+                or product in liability_names
+                or account in liability_names
+            ):
+                continue
+            credit_targets.append((a, product, data, "payment"))
+        elif a.get("intent") == "balance":
+            name = str(data.get("name") or "").strip()
+            product = normalize_product(name) or name
+            kind = (data.get("kind") or "").strip()
+            force_liab = (
+                kind == "liability"
+                or is_credit_product(product)
+                or _looks_like_credit_account_create(source)
+                or "信用" in str(data.get("note") or "")
+                or "负债" in str(data.get("note") or "")
+            )
+            if not force_liab or not product:
+                continue
+            data["kind"] = "liability"
+            if "信用" not in str(data.get("note") or "") and "负债" not in str(data.get("note") or ""):
+                data["note"] = ("信用/负债账户；" + str(data.get("note") or "")).strip("；")[:200]
+            a["data"] = data
+            credit_targets.append((a, product, data, "account"))
 
-    if not credit_txns and _looks_like_payment(source):
-        # 文本里点名信用产品但 actions 尚未带 account
-        for name in ("抖音月付", "美团月付", "京东白条", "花呗", "白条", "借呗", "信用卡", "微信分付"):
-            if name in source and is_credit_product(name):
-                # 由调用方已生成 txn；这里仅兜底
-                break
-
-    for item, product, data in credit_txns:
-        amount = float(data.get("amount") or 0)
+    for item, product, data, mode in credit_targets:
+        amount = float(data.get("amount") or data.get("balance") or 0)
         user_due = extract_due_day_from_reminders(product, reminders)
+        # 文本里指定每月X号
+        m_due = re.search(r"(?:每个月|每月)(?:的)?\s*(\d{1,2})[日号]", source)
+        if m_due:
+            user_due = int(m_due.group(1))
         user_statement = infer_statement_day(product, user_due) if user_due else None
         policy = resolve_policy(
             product,
             statement_day=user_statement,
             due_day=user_due,
+            allow_generic=True,
         )
         if not policy:
             continue
         classification = classify_charge(policy)
-        explain = enrich_explain_with_web(policy, classification)
-        explains.append(explain)
-
-        # 备注写入账单归属
-        note = str(data.get("note") or source)[:200]
-        tag = f"计入{classification['period']}；应还日{classification['due_date']}"
-        if tag not in note:
-            data = {
-                **data,
-                "note": f"{note}；{tag}"[:200],
-                "account": product,
-                "bill_period": classification["period"],
-                "bill_due_date": classification["due_date"],
-            }
-            item["data"] = data
-
-        inst = parse_installment(source, amount)
-        if inst:
-            first_due = datetime.strptime(classification["due_date"], "%Y-%m-%d").date()
-            # 若计入下月账单，首期还款日已是 classification.due_date
-            installments = build_installment_reminders(
-                product,
-                total=amount,
-                periods=int(inst["periods"]),
-                first_due=first_due,
-                per_amount=inst.get("per_amount"),
-            )
-            # 去掉已有同名分期草稿，再追加
-            out = [
-                a
-                for a in out
-                if not (
-                    a.get("intent") == "reminder"
-                    and product in str((a.get("data") or {}).get("title") or "")
-                    and "期" in str((a.get("data") or {}).get("title") or "")
+        if mode == "payment":
+            explain = enrich_explain_with_web(policy, classification)
+            explains.append(explain)
+            note = str(data.get("note") or source)[:200]
+            tag = f"计入{classification['period']}；应还日{classification['due_date']}"
+            if tag not in note:
+                data = {
+                    **data,
+                    "note": f"{note}；{tag}"[:200],
+                    "account": product,
+                    "bill_period": classification["period"],
+                    "bill_due_date": classification["due_date"],
+                }
+                item["data"] = data
+            inst = parse_installment(source, amount)
+            if inst:
+                first_due = datetime.strptime(classification["due_date"], "%Y-%m-%d").date()
+                installments = build_installment_reminders(
+                    product,
+                    total=amount,
+                    periods=int(inst["periods"]),
+                    first_due=first_due,
+                    per_amount=inst.get("per_amount"),
                 )
-            ]
-            out.extend(installments)
+                out = [
+                    a
+                    for a in out
+                    if not (
+                        a.get("intent") == "reminder"
+                        and product in str((a.get("data") or {}).get("title") or "")
+                        and "期" in str((a.get("data") or {}).get("title") or "")
+                    )
+                ]
+                out.extend(installments)
+                explains.append(
+                    f"已按{inst['periods']}期拆分，每期约 {inst.get('per_amount') or '?'} 元，"
+                    "下方为每一期还款提醒，请核对金额与日期。"
+                )
+                continue
+        else:
             explains.append(
-                f"已按{inst['periods']}期拆分，每期约 {inst.get('per_amount') or '?'} 元，"
-                "下方为每一期还款提醒，请核对金额与日期。"
+                f"已将「{product}」记为信用/负债账户。"
+                f"{policy['summary']} 建议还款日每月{policy['due_day']}号"
+                "（可按 App 修改确认卡）。"
             )
-        elif not has_monthly_reminder(product, reminders):
-            # 尚无周期提醒 → 同步创建
+
+        if not has_monthly_reminder(product, reminders):
             already = any(
                 a.get("intent") == "reminder"
                 and (a.get("data") or {}).get("repeat") == "monthly"
-                and normalize_product((a.get("data") or {}).get("linked_asset_name") or "")
-                == product
+                and (
+                    normalize_product((a.get("data") or {}).get("linked_asset_name") or "")
+                    == normalize_product(product)
+                    or product in str((a.get("data") or {}).get("title") or "")
+                )
                 for a in out
             )
             if not already:
@@ -1167,15 +1213,14 @@ def _enrich_credit_payment_actions(
                     int(policy["due_day"]),
                     note=(
                         f"每月{policy['due_day']}号还款；"
-                        f"默认账单日{policy['statement_day']}号；"
-                        f"{classification['period']}"
+                        f"默认账单日{policy['statement_day']}号"
                     ),
                 )
-                # 用本笔归属的还款日作为首期 due
-                rem["data"]["due_at"] = classification["due_at"]
+                if mode == "payment":
+                    rem["data"]["due_at"] = classification["due_at"]
                 out.append(rem)
                 explains.append(
-                    f"检测到「{product}」尚无周期还款提醒，已按制度拟定每月"
+                    f"检测到「{product}」尚无周期还款提醒，已拟定每月"
                     f"{policy['due_day']}号提醒，请确认是否与 App 一致。"
                 )
 
@@ -1223,6 +1268,23 @@ def understand_message(
                 "data": pay_txn.get("data") or {},
                 "actions": [pay_txn],
                 "summary": "识别为记账（含付款账户）",
+            },
+        )
+
+    # 手动声明信用/负债账户
+    credit_acc = _regex_parse_credit_account(source)
+    if credit_acc:
+        actions = credit_acc.get("actions") or [
+            {"intent": "balance", "data": credit_acc.get("data") or {}}
+        ]
+        return _fin(
+            source,
+            {
+                "intent": credit_acc.get("intent") or "batch",
+                "should_act": True,
+                "data": {} if len(actions) > 1 else (actions[0].get("data") or {}),
+                "actions": actions,
+                "summary": "识别为信用/负债账户",
             },
         )
 
@@ -1490,23 +1552,126 @@ def generate_brief(
     reply = _invoke_llm(system, user_prompt, provider, key, base, model)
     return reply or FALLBACK_BRIEF[persona]
 
-def _regex_parse_balance(text: str) -> dict | None:
-    if not _looks_like_balance(text):
+def _looks_like_credit_account_create(text: str) -> bool:
+    return bool(
+        re.search(
+            r"信用账户|负债账户|信用付账户|记为负债|设为负债|当作信用|"
+            r"(?:新建|添加|创建|开一个).{0,8}(?:信用|负债)",
+            text or "",
+        )
+    )
+
+
+def _regex_parse_credit_account(text: str) -> dict | None:
+    """手动声明信用/负债账户：产出 balance(liability) + 可选周期提醒。"""
+    text = _normalize_finance_text((text or "").strip())
+    if not _looks_like_credit_account_create(text):
         return None
+
+    name = ""
+    patterns = (
+        r"(?:信用账户|负债账户|信用付账户)(?:叫|名为|名称是|是|：|:)?\s*[「『\"']?([\u4e00-\u9fa5A-Za-z0-9]{2,16})",
+        r"[「『\"']?([\u4e00-\u9fa5A-Za-z0-9]{2,16})[」』\"']?\s*(?:是|为)(?:一个)?(?:信用账户|负债账户|信用付)",
+        r"(?:新建|添加|创建|开一个)\s*(?:一个)?(?:信用|负债)账户\s*[「『\"']?([\u4e00-\u9fa5A-Za-z0-9]{2,16})",
+        r"(?:新建|添加|创建)\s*[「『\"']?([\u4e00-\u9fa5A-Za-z0-9]{2,16})[」』\"']?\s*(?:信用账户|负债账户)",
+    )
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            name = (m.group(1) or "").strip()
+            break
+    if not name:
+        # 兜底：去掉套话后取中文词
+        cleaned = re.sub(
+            r"新建|添加|创建|开一个|一个|信用账户|负债账户|信用付|账户|叫|名为|是|的|吧|嗯",
+            " ",
+            text,
+        )
+        m = re.search(r"([\u4e00-\u9fa5A-Za-z0-9]{2,16})", cleaned)
+        if m:
+            name = m.group(1).strip()
+    if not name or name in ("信用", "负债", "每月", "还款"):
+        return None
+    name = name[:32]
+
+    amount = 0.0
+    amt = _amount_token_re()
+    m_amt = re.search(
+        rf"(?:欠|欠款|待还|应还|余额|为|是)?\s*({amt})\s*元?",
+        text,
+    )
+    if m_amt:
+        parsed = _parse_cn_amount(m_amt.group(1))
+        if parsed is not None and parsed >= 0:
+            amount = parsed
+
+    due_day = None
+    m_due = re.search(r"(?:每个月|每月)(?:的)?\s*(\d{1,2})[日号]", text)
+    if m_due:
+        due_day = int(m_due.group(1))
+
+    actions = [
+        {
+            "intent": "balance",
+            "data": {
+                "name": name,
+                "balance": amount,
+                "kind": "liability",
+                "note": "信用/负债账户",
+            },
+        }
+    ]
+    if due_day:
+        from services.repay_policy import build_monthly_reminder
+
+        rem = build_monthly_reminder(
+            name,
+            due_day,
+            note=f"每月{due_day}号还款（用户指定）",
+        )
+        actions.append(rem)
+
+    if len(actions) == 1:
+        return {"intent": "balance", "data": actions[0]["data"], "actions": actions}
+    return {"intent": "batch", "data": {}, "actions": actions}
+
+
+def _regex_parse_balance(text: str) -> dict | None:
+    if not _looks_like_balance(text) and not _looks_like_credit_account_create(text):
+        return None
+    # 信用账户创建优先走专用解析
+    credit = _regex_parse_credit_account(text)
+    if credit:
+        return credit
     m = (
         re.search(r"(?:余额|结余|还有|剩(?:了|下)?)(?:为|是|约|大概)?\s*(\d+(?:\.\d{1,2})?)", text)
         or re.search(r"(\d+(?:\.\d{1,2})?)\s*元?\s*(?:的)?(?:余额|结余)", text)
         or re.search(r"(\d+(?:\.\d{1,2})?)", text)
     )
     if not m:
+        # 允许「新建信用账户xx」无金额 → 0
+        if _looks_like_credit_account_create(text):
+            name = _extract_asset_name(text)
+            if name and name != "资产":
+                return {
+                    "intent": "balance",
+                    "data": {
+                        "name": name,
+                        "balance": 0,
+                        "kind": "liability",
+                        "note": "信用/负债账户",
+                    },
+                }
         return None
     amount = float(m.group(1))
     if amount < 0:
         return None
-    return {
-        "intent": "balance",
-        "data": {"name": _extract_asset_name(text), "balance": amount, "note": text[:200]},
-    }
+    kind = "liability" if _looks_like_credit_account_create(text) else None
+    data = {"name": _extract_asset_name(text), "balance": amount, "note": text[:200]}
+    if kind:
+        data["kind"] = kind
+        data["note"] = "信用/负债账户"
+    return {"intent": "balance", "data": data}
 
 
 def _regex_parse_transaction(text: str) -> dict | None:

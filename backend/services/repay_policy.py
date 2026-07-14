@@ -164,6 +164,7 @@ def resolve_policy(
     *,
     statement_day: int | None = None,
     due_day: int | None = None,
+    allow_generic: bool = False,
 ) -> dict | None:
     canon = normalize_product(product)
     base = REPAY_POLICIES.get(canon)
@@ -179,6 +180,18 @@ def resolve_policy(
             "charge_rule": (
                 "账单日当天及之前入账通常计入本期；之后计入下期（以 App 入账时间为准）。"
             ),
+            "sources": (),
+        }
+    if not base and allow_generic and canon:
+        base = {
+            "statement_day": int(statement_day or 1),
+            "due_day": int(due_day or 10),
+            "due_offset_days": None,
+            "summary": (
+                f"「{canon}」已按信用/负债账户处理。公开还款制度未收录该产品，"
+                "暂按每月还款日提醒；请按 App 实际账单日/还款日修改确认卡。"
+            ),
+            "charge_rule": "请以该信用产品 App 的账单周期为准判断本月/下月归属。",
             "sources": (),
         }
     if not base:
