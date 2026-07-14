@@ -71,6 +71,8 @@ def _ensure_schema():
         "ALTER TABLE reminders ADD COLUMN recurrence VARCHAR(16) DEFAULT 'none'",
         "ALTER TABLE reminders ADD COLUMN linked_asset_name VARCHAR(32) DEFAULT ''",
         "ALTER TABLE transactions ADD COLUMN account VARCHAR(32) DEFAULT ''",
+        "ALTER TABLE assets ADD COLUMN repay_due_day INTEGER",
+        "ALTER TABLE assets ADD COLUMN repay_statement_day INTEGER",
     ]
     with db.engine.begin() as conn:
         for sql in stmts:

@@ -17,6 +17,8 @@ type AssetRow = {
   balance: number;
   kind: AssetKind;
   note: string;
+  repay_due_day?: number | null;
+  repay_statement_day?: number | null;
   updated_at: string | null;
 };
 
@@ -98,12 +100,16 @@ export default function StatsPage() {
     balance: "",
     kind: "asset" as AssetKind,
     note: "",
+    repay_due_day: "",
+    repay_statement_day: "",
   });
   const [newAsset, setNewAsset] = useState({
     name: "",
     balance: "",
     kind: "asset" as AssetKind,
     note: "",
+    repay_due_day: "",
+    repay_statement_day: "",
   });
 
   const [editingRemId, setEditingRemId] = useState<number | null>(null);
@@ -160,22 +166,38 @@ export default function StatsPage() {
       setError("请填写账户名和有效余额");
       return;
     }
+    if (newAsset.kind === "liability" && !newAsset.repay_due_day.trim()) {
+      setError("信用/负债账户请填写每月还款日（1–28）");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      await apiFetch("/api/assets", {
-        method: "POST",
-        body: {
-          name: newAsset.name.trim(),
-          balance,
-          kind: newAsset.kind,
-          note: newAsset.note.trim(),
-        },
+      const body: Record<string, unknown> = {
+        name: newAsset.name.trim(),
+        balance,
+        kind: newAsset.kind,
+        note: newAsset.note.trim(),
+      };
+      if (newAsset.kind === "liability") {
+        body.repay_due_day = Number(newAsset.repay_due_day);
+        if (newAsset.repay_statement_day.trim()) {
+          body.repay_statement_day = Number(newAsset.repay_statement_day);
+        }
+      }
+      await apiFetch("/api/assets", { method: "POST", body });
+      const wasLiab = newAsset.kind === "liability";
+      setNewAsset({
+        name: "",
+        balance: "",
+        kind: "asset",
+        note: "",
+        repay_due_day: "",
+        repay_statement_day: "",
       });
-      setNewAsset({ name: "", balance: "", kind: "asset", note: "" });
       bump();
       await load();
-      flash("账户已保存");
+      flash(wasLiab ? "信用账户已保存，并同步了每月还款提醒" : "账户已保存");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "保存失败");
     } finally {
@@ -190,6 +212,12 @@ export default function StatsPage() {
       balance: String(a.balance),
       kind: a.kind === "liability" ? "liability" : "asset",
       note: a.note || "",
+      repay_due_day:
+        a.repay_due_day != null && a.repay_due_day > 0 ? String(a.repay_due_day) : "",
+      repay_statement_day:
+        a.repay_statement_day != null && a.repay_statement_day > 0
+          ? String(a.repay_statement_day)
+          : "",
     });
   }
 
@@ -199,22 +227,36 @@ export default function StatsPage() {
       setError("请填写有效名称和余额");
       return;
     }
+    if (assetDraft.kind === "liability" && !assetDraft.repay_due_day.trim()) {
+      setError("信用/负债账户请填写每月还款日（1–28）");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      await apiFetch(`/api/assets/${id}`, {
-        method: "PATCH",
-        body: {
-          name: assetDraft.name.trim(),
-          balance,
-          kind: assetDraft.kind,
-          note: assetDraft.note.trim(),
-        },
-      });
+      const body: Record<string, unknown> = {
+        name: assetDraft.name.trim(),
+        balance,
+        kind: assetDraft.kind,
+        note: assetDraft.note.trim(),
+        repay_due_day:
+          assetDraft.kind === "liability" && assetDraft.repay_due_day.trim()
+            ? Number(assetDraft.repay_due_day)
+            : null,
+        repay_statement_day:
+          assetDraft.kind === "liability" && assetDraft.repay_statement_day.trim()
+            ? Number(assetDraft.repay_statement_day)
+            : null,
+      };
+      await apiFetch(`/api/assets/${id}`, { method: "PATCH", body });
       setEditingAssetId(null);
       bump();
       await load();
-      flash("账户已更新");
+      flash(
+        assetDraft.kind === "liability"
+          ? "账户已更新，还款提醒已同步"
+          : "账户已更新"
+      );
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "更新失败");
     } finally {
@@ -504,7 +546,7 @@ export default function StatsPage() {
                     min="0"
                     step="0.01"
                     className={inputCls}
-                    placeholder="余额"
+                    placeholder="余额/欠款"
                     value={newAsset.balance}
                     onChange={(e) => setNewAsset({ ...newAsset, balance: e.target.value })}
                   />
@@ -524,8 +566,37 @@ export default function StatsPage() {
                     value={newAsset.note}
                     onChange={(e) => setNewAsset({ ...newAsset, note: e.target.value })}
                   />
+                  {newAsset.kind === "liability" && (
+                    <>
+                      <input
+                        type="number"
+                        min={1}
+                        max={28}
+                        className={inputCls}
+                        placeholder="每月还款日（必填，1–28）"
+                        value={newAsset.repay_due_day}
+                        onChange={(e) =>
+                          setNewAsset({ ...newAsset, repay_due_day: e.target.value })
+                        }
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        max={28}
+                        className={inputCls}
+                        placeholder="每月账单日（可选，1–28）"
+                        value={newAsset.repay_statement_day}
+                        onChange={(e) =>
+                          setNewAsset({
+                            ...newAsset,
+                            repay_statement_day: e.target.value,
+                          })
+                        }
+                      />
+                    </>
+                  )}
                   <p className="text-xs text-gray-400 sm:col-span-2">
-                    信用账户也可对管家说：「新建信用账户叫某某，每月X号还」。未收录的产品名请选「负债/信用账户」或对话时标明是信用账户。
+                    信用账户请填写还款日，保存后会自动创建/更新每月还款提醒。也可对管家说：「新建信用账户叫某某，每月X号还」。
                   </p>
                   <button
                     type="submit"
@@ -867,8 +938,22 @@ function AssetEditableList({
   title: string;
   items: AssetRow[];
   editingId: number | null;
-  draft: { name: string; balance: string; kind: AssetKind; note: string };
-  setDraft: (d: { name: string; balance: string; kind: AssetKind; note: string }) => void;
+  draft: {
+    name: string;
+    balance: string;
+    kind: AssetKind;
+    note: string;
+    repay_due_day: string;
+    repay_statement_day: string;
+  };
+  setDraft: (d: {
+    name: string;
+    balance: string;
+    kind: AssetKind;
+    note: string;
+    repay_due_day: string;
+    repay_statement_day: string;
+  }) => void;
   onEdit: (a: AssetRow) => void;
   onSave: (id: number) => void;
   onCancel: () => void;
@@ -920,6 +1005,32 @@ function AssetEditableList({
                   value={draft.note}
                   onChange={(e) => setDraft({ ...draft, note: e.target.value })}
                 />
+                {draft.kind === "liability" && (
+                  <>
+                    <input
+                      type="number"
+                      min={1}
+                      max={28}
+                      className={inputCls}
+                      placeholder="每月还款日（1–28）"
+                      value={draft.repay_due_day}
+                      onChange={(e) =>
+                        setDraft({ ...draft, repay_due_day: e.target.value })
+                      }
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={28}
+                      className={inputCls}
+                      placeholder="每月账单日（可选）"
+                      value={draft.repay_statement_day}
+                      onChange={(e) =>
+                        setDraft({ ...draft, repay_statement_day: e.target.value })
+                      }
+                    />
+                  </>
+                )}
               </div>
               <div className="flex gap-2">
                 <button
@@ -950,6 +1061,14 @@ function AssetEditableList({
                   <span className="ml-2 text-xs text-gray-400">
                     {a.kind === "liability" ? "负债" : "资产"}
                   </span>
+                  {a.kind === "liability" && a.repay_due_day ? (
+                    <span className="ml-2 text-xs text-amber-600">
+                      每月{a.repay_due_day}号还
+                      {a.repay_statement_day
+                        ? ` · 账单日${a.repay_statement_day}号`
+                        : ""}
+                    </span>
+                  ) : null}
                 </p>
                 {a.note && <p className="text-xs text-gray-400 truncate">{a.note}</p>}
               </div>

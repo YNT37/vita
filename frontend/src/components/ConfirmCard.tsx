@@ -22,6 +22,8 @@ export type ConfirmDraft = {
   name?: string;
   balance?: string;
   kind?: "asset" | "liability";
+  repay_due_day?: string;
+  repay_statement_day?: string;
 };
 
 export type PendingAction = {
@@ -103,10 +105,19 @@ export function pendingToCard(action: PendingAction, id: string): ConfirmCardSta
       kind:
         data.kind === "liability" ||
         /花呗|白条|借呗|信用卡|负债|欠款|贷款|月付|分付/.test(String(data.name ?? "")) ||
-        String(data.note ?? "").includes("负债")
+        String(data.note ?? "").includes("负债") ||
+        String(data.note ?? "").includes("信用")
           ? "liability"
           : "asset",
       note: String(data.note ?? ""),
+      repay_due_day:
+        data.repay_due_day != null && String(data.repay_due_day) !== ""
+          ? String(data.repay_due_day)
+          : "",
+      repay_statement_day:
+        data.repay_statement_day != null && String(data.repay_statement_day) !== ""
+          ? String(data.repay_statement_day)
+          : "",
     },
   };
 }
@@ -140,6 +151,16 @@ export function draftToBody(card: ConfirmCardState): Record<string, unknown> {
     balance: Number(d.balance),
     kind: d.kind || "asset",
     note: (d.note || "").trim(),
+    ...(d.kind === "liability"
+      ? {
+          repay_due_day: d.repay_due_day?.trim()
+            ? Number(d.repay_due_day)
+            : null,
+          repay_statement_day: d.repay_statement_day?.trim()
+            ? Number(d.repay_statement_day)
+            : null,
+        }
+      : {}),
   };
 }
 
@@ -372,7 +393,7 @@ export function ConfirmCard({ card, busy, onChange, onConfirm, onDismiss }: Prop
               }
             >
               <option value="asset">资产</option>
-              <option value="liability">负债</option>
+              <option value="liability">负债/信用账户</option>
             </select>
           </label>
           <label className="text-xs text-gray-500 space-y-1">
@@ -384,6 +405,38 @@ export function ConfirmCard({ card, busy, onChange, onConfirm, onDismiss }: Prop
               onChange={(e) => setDraft({ note: e.target.value })}
             />
           </label>
+          {card.draft.kind === "liability" && (
+            <>
+              <label className="text-xs text-gray-500 space-y-1">
+                <span>每月还款日</span>
+                <input
+                  className={inputCls}
+                  type="number"
+                  min={1}
+                  max={28}
+                  placeholder="1–28"
+                  value={card.draft.repay_due_day || ""}
+                  disabled={disabled}
+                  onChange={(e) => setDraft({ repay_due_day: e.target.value })}
+                />
+              </label>
+              <label className="text-xs text-gray-500 space-y-1">
+                <span>每月账单日（可选）</span>
+                <input
+                  className={inputCls}
+                  type="number"
+                  min={1}
+                  max={28}
+                  placeholder="1–28"
+                  value={card.draft.repay_statement_day || ""}
+                  disabled={disabled}
+                  onChange={(e) =>
+                    setDraft({ repay_statement_day: e.target.value })
+                  }
+                />
+              </label>
+            </>
+          )}
         </div>
       )}
 

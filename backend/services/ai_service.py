@@ -1219,6 +1219,13 @@ def _enrich_credit_payment_actions(
                 if mode == "payment":
                     rem["data"]["due_at"] = classification["due_at"]
                 out.append(rem)
+                # 把还款日写回账户草稿，便于确认入库后落库
+                if mode == "account":
+                    item["data"] = {
+                        **data,
+                        "repay_due_day": int(policy["due_day"]),
+                        "repay_statement_day": int(policy["statement_day"]),
+                    }
                 explains.append(
                     f"检测到「{product}」尚无周期还款提醒，已拟定每月"
                     f"{policy['due_day']}号提醒，请确认是否与 App 一致。"
@@ -1618,6 +1625,7 @@ def _regex_parse_credit_account(text: str) -> dict | None:
                 "balance": amount,
                 "kind": "liability",
                 "note": "信用/负债账户",
+                **({"repay_due_day": due_day} if due_day else {}),
             },
         }
     ]
@@ -1814,7 +1822,18 @@ def apply_balance_update(user_id: int, data: dict) -> str:
     note = (data.get("note") or "").strip()[:200]
     kind = (data.get("kind") or "").strip()
     if kind not in ("asset", "liability"):
-        kind = "liability" if _is_liability_name(name) or "负债" in note else "asset"
+        kind = "liability" if _is_liability_name(name) or "负债" in note or "信用" in note else "asset"
+    due_day = data.get("repay_due_day")
+    statement_day = data.get("repay_statement_day")
+    try:
+        due_day_i = int(due_day) if due_day not in (None, "") else None
+    except (TypeError, ValueError):
+        due_day_i = None
+    try:
+        statement_day_i = int(statement_day) if statement_day not in (None, "") else None
+    except (TypeError, ValueError):
+        statement_day_i = None
+
     asset = Asset.query.filter_by(user_id=user_id, name=name).first()
     if asset:
         asset.balance = balance
@@ -1826,6 +1845,21 @@ def apply_balance_update(user_id: int, data: dict) -> str:
         asset = Asset(user_id=user_id, name=name, balance=balance, note=note, kind=kind)
         db.session.add(asset)
         action = f"已记录{name}余额 {float(balance)} 元"
+    if kind == "liability":
+        if due_day_i:
+            asset.repay_due_day = due_day_i
+        if statement_day_i:
+            asset.repay_statement_day = statement_day_i
+        if asset.repay_due_day:
+            from services.reminder_service import sync_liability_repay_reminder
+
+            sync_liability_repay_reminder(
+                user_id,
+                name,
+                due_day=asset.repay_due_day,
+                statement_day=asset.repay_statement_day,
+            )
+            action += f"；每月{asset.repay_due_day}号还款提醒已同步"
     db.session.commit()
     return action
 

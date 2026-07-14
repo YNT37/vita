@@ -142,6 +142,8 @@ class Asset(db.Model):
     balance = db.Column(db.Numeric(14, 2), nullable=False)
     kind = db.Column(db.String(16), default="asset")  # asset / liability
     note = db.Column(db.String(200), default="")
+    repay_due_day = db.Column(db.Integer, nullable=True)  # 每月还款日 1-28
+    repay_statement_day = db.Column(db.Integer, nullable=True)  # 每月账单日 1-28
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
@@ -155,5 +157,7 @@ class Asset(db.Model):
             "balance": float(self.balance),
             "kind": kind,
             "note": self.note or "",
+            "repay_due_day": self.repay_due_day,
+            "repay_statement_day": self.repay_statement_day,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

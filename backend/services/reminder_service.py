@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timedelta
 
 from models import Asset, Reminder
+from sqlalchemy import or_
 
 VALID_REPEAT = ("none", "monthly", "weekly")
 
@@ -94,6 +95,76 @@ def reminder_to_dict(reminder: Reminder, *, with_debt: bool = False) -> dict:
     if with_debt:
         data.update(debt_snapshot_for_reminder(reminder))
     return data
+
+
+def sync_liability_repay_reminder(
+    user_id: int,
+    asset_name: str,
+    *,
+    due_day: int | None,
+    statement_day: int | None = None,
+    old_name: str | None = None,
+) -> Reminder | None:
+    """按账户还款日创建/更新关联的每月还款提醒。due_day 为空则不改提醒。"""
+    from extensions import db
+
+    name = (asset_name or "").strip()[:32]
+    if not name or not due_day:
+        return None
+    due_day = int(due_day)
+    if due_day < 1 or due_day > 28:
+        raise ValueError("due_day out of range")
+
+    today = datetime.now()
+    last = calendar.monthrange(today.year, today.month)[1]
+    day = min(due_day, last)
+    due_at = datetime(today.year, today.month, day, 10, 0)
+    if due_at.date() < today.date():
+        due_at = next_due_at(due_at, "monthly")
+
+    search_names = {name}
+    if old_name and old_name.strip() and old_name.strip() != name:
+        search_names.add(old_name.strip()[:32])
+
+    reminder = (
+        Reminder.query.filter(
+            Reminder.user_id == user_id,
+            Reminder.done.is_(False),
+            Reminder.recurrence == "monthly",
+        )
+        .filter(
+            or_(
+                Reminder.linked_asset_name.in_(list(search_names)),
+                Reminder.title.in_([f"还{n}" for n in search_names]),
+            )
+        )
+        .order_by(Reminder.id.asc())
+        .first()
+    )
+    note_bits = [f"每月{due_day}号还款"]
+    if statement_day:
+        note_bits.append(f"账单日{int(statement_day)}号")
+    note = "；".join(note_bits)
+    if reminder:
+        reminder.title = f"还{name}"[:120]
+        reminder.due_at = due_at
+        reminder.type = "bill"
+        reminder.linked_asset_name = name
+        reminder.recurrence = "monthly"
+        reminder.note = note[:200]
+        reminder.notified_at = None
+    else:
+        reminder = Reminder(
+            user_id=user_id,
+            title=f"还{name}"[:120],
+            due_at=due_at,
+            type="bill",
+            note=note[:200],
+            recurrence="monthly",
+            linked_asset_name=name,
+        )
+        db.session.add(reminder)
+    return reminder
 
 
 def detect_repeat_from_text(text: str) -> str:

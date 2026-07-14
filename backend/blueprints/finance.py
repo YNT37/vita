@@ -7,12 +7,49 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from models import Transaction, Asset
 from errors import ApiError
+from services.reminder_service import sync_liability_repay_reminder
 
 finance_bp = Blueprint("finance", __name__, url_prefix="/api")
 
 
 def _uid():
     return int(get_jwt_identity())
+
+
+def _parse_optional_day(raw, field: str) -> int | None:
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        day = int(raw)
+    except (TypeError, ValueError):
+        raise ApiError("invalid_day", f"{field} 须为 1–28 的整数", 400, field)
+    if day < 1 or day > 28:
+        raise ApiError("invalid_day", f"{field} 须为 1–28", 400, field)
+    return day
+
+
+def _apply_repay_fields(asset: Asset, data: dict, *, old_name: str | None = None):
+    """写入还款日/账单日，并同步周期提醒（仅负债账户）。"""
+    if "repay_due_day" in data:
+        asset.repay_due_day = _parse_optional_day(data.get("repay_due_day"), "repay_due_day")
+    if "repay_statement_day" in data:
+        asset.repay_statement_day = _parse_optional_day(
+            data.get("repay_statement_day"), "repay_statement_day"
+        )
+    if (asset.kind or "") != "liability":
+        return
+    due = asset.repay_due_day
+    if due:
+        try:
+            sync_liability_repay_reminder(
+                asset.user_id,
+                asset.name,
+                due_day=due,
+                statement_day=asset.repay_statement_day,
+                old_name=old_name,
+            )
+        except ValueError as e:
+            raise ApiError("invalid_day", str(e), 400, "repay_due_day") from e
 
 
 def _parse_date(s, field="date"):
@@ -191,6 +228,8 @@ def upsert_asset():
     else:
         asset = Asset(user_id=uid, name=name, balance=balance, note=note, kind=kind)
         db.session.add(asset)
+        db.session.flush()
+    _apply_repay_fields(asset, data)
     db.session.commit()
     return jsonify(asset.to_dict()), 200
 
@@ -202,6 +241,7 @@ def patch_asset(asset_id):
     if not asset:
         raise ApiError("not_found", "资产不存在", 404)
     data = request.get_json(silent=True) or {}
+    old_name = asset.name
 
     if "name" in data:
         name = (data.get("name") or "").strip()
@@ -236,6 +276,8 @@ def patch_asset(asset_id):
         if kind not in ("asset", "liability"):
             raise ApiError("invalid_kind", "kind 必须是 asset 或 liability", 400, "kind")
         asset.kind = kind
+
+    _apply_repay_fields(asset, data, old_name=old_name)
 
     asset.updated_at = datetime.utcnow()
     db.session.commit()
