@@ -35,11 +35,16 @@ def next_due_at(due: datetime, repeat: str) -> datetime:
 
 def infer_linked_asset_name(title: str, note: str = "") -> str:
     text = f"{title} {note}"
-    for kw in ("京东白条", "花呗", "白条", "借呗", "信用卡"):
+    for kw in ("抖音月付", "美团月付", "京东白条", "微信分付", "花呗", "白条", "借呗", "信用卡", "分付"):
         if kw == "白条" and "京东白条" in text:
             continue
+        if kw == "分付" and "微信分付" in text:
+            continue
         if kw in text:
-            return kw
+            return "京东白条" if kw == "白条" else ("微信分付" if kw == "分付" else kw)
+    m = re.search(r"([\u4e00-\u9fa5]{2,8}月付)", text)
+    if m:
+        return m.group(1)
     return ""
 
 

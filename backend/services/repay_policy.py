@@ -74,6 +74,43 @@ REPAY_POLICIES: dict[str, dict] = {
         "charge_rule": "账单日当天消费通常计入本期；账单日次日起计入下期（以发卡行规则为准）。",
         "sources": (),
     },
+    "抖音月付": {
+        "aliases": ("抖音月付",),
+        "statement_day": 1,
+        "due_day": 6,
+        "due_offset_days": 5,
+        "typical_due_days": (6, 15, 20),
+        "summary": (
+            "抖音月付按账单制：账单日常见为每月1/10/15日，还款日一般为账单日+5天"
+            "（对应6/15/20日，可在抖音「还款助手」查看，每年可改一次）。"
+            "支持一次性还或3/6/12期分期；部分交易需确认收货后入账。"
+        ),
+        "charge_rule": (
+            "账单日当天及之前已入账消费通常计入本期；账单日次日起计入下期"
+            "（以抖音月付账单页入账时间为准）。"
+        ),
+        "sources": (),
+    },
+    "美团月付": {
+        "aliases": ("美团月付",),
+        "statement_day": 1,
+        "due_day": 10,
+        "due_offset_days": None,
+        "typical_due_days": (8, 9, 10),
+        "summary": "美团月付按账单制还款，具体账单日/还款日以美团 App 月付页为准。",
+        "charge_rule": "入账后计入对应账期，在当期还款日前还清；以 App 显示为准。",
+        "sources": (),
+    },
+    "微信分付": {
+        "aliases": ("微信分付", "分付"),
+        "statement_day": 1,
+        "due_day": 10,
+        "due_offset_days": None,
+        "typical_due_days": (8, 9, 10),
+        "summary": "微信分付按账单还款，账单日与还款日以微信「分付」页为准。",
+        "charge_rule": "消费入账后计入当期或下期账单，于还款日前还清。",
+        "sources": (),
+    },
 }
 
 
@@ -81,20 +118,34 @@ def normalize_product(name: str | None) -> str:
     text = (name or "").strip()
     if not text:
         return ""
-    if "京东白条" in text:
+    if "京东白条" in text or text == "白条":
         return "京东白条"
-    if text == "白条" or text.endswith("白条"):
+    if text.endswith("白条") and "京东" in text:
         return "京东白条"
+    if "抖音月付" in text or ("抖音" in text and "月付" in text):
+        return "抖音月付"
+    if "美团月付" in text or ("美团" in text and "月付" in text):
+        return "美团月付"
+    if "分付" in text:
+        return "微信分付"
     for canon, meta in REPAY_POLICIES.items():
         if text == canon or text in meta.get("aliases", ()):
             return canon
         if canon in text:
             return canon
+    # 其它「xx月付」保留原名，仍按信用产品处理
+    if text.endswith("月付"):
+        return text
     return text
 
 
 def is_credit_product(name: str | None) -> bool:
-    return normalize_product(name) in REPAY_POLICIES
+    n = normalize_product(name)
+    if not n:
+        return False
+    if n in REPAY_POLICIES:
+        return True
+    return n.endswith("月付") or "分付" in n or "白条" in n or "花呗" in n
 
 
 def _clamp_day(year: int, month: int, day: int) -> date:
@@ -116,6 +167,20 @@ def resolve_policy(
 ) -> dict | None:
     canon = normalize_product(product)
     base = REPAY_POLICIES.get(canon)
+    if not base and canon.endswith("月付"):
+        base = {
+            "statement_day": 1,
+            "due_day": 6,
+            "due_offset_days": 5,
+            "summary": (
+                f"「{canon}」为先享后付类账单产品，账单日/还款日以对应 App 为准；"
+                "暂按常见「账单日每月1日、还款日每月6日」拟定，请在确认卡中按实际修改。"
+            ),
+            "charge_rule": (
+                "账单日当天及之前入账通常计入本期；之后计入下期（以 App 入账时间为准）。"
+            ),
+            "sources": (),
+        }
     if not base:
         return None
     s_day = int(statement_day or base["statement_day"])
@@ -370,6 +435,9 @@ def infer_statement_day(product: str, due_day: int) -> int:
         if s <= 0:
             s += 28  # 粗略跨月
         return min(max(s, 1), 28)
+    if canon == "抖音月付" or canon.endswith("月付"):
+        # 还款日 ≈ 账单日 + 5
+        return {6: 1, 15: 10, 20: 15}.get(d, max(1, d - 5))
     if canon == "信用卡":
         return max(1, d - 18) if d > 18 else 1
     return 1

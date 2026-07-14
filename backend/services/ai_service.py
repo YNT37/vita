@@ -21,11 +21,13 @@ MAX_CONTENT_LEN = 1000
 _LLM_CACHE: dict[str, object] = {}
 ACTIONABLE_INTENTS = ("transaction", "balance", "reminder", "batch")
 UNDERSTAND_INTENTS = ("chat", "query", "transaction", "balance", "reminder", "batch", "unknown")
-LIABILITY_KEYWORDS = ("花呗", "白条", "借呗", "信用卡", "负债", "欠款", "贷款")
+LIABILITY_KEYWORDS = (
+    "花呗", "白条", "借呗", "信用卡", "月付", "分付", "负债", "欠款", "贷款",
+)
 ASSET_KEYWORDS = (
     "基金", "余额宝", "股票", "银行卡", "储蓄卡", "现金", "理财", "债券",
     "外汇", "微信", "支付宝", "建行", "工行", "招行", "农行", "中行", "交行",
-    "花呗", "白条", "信用卡",
+    "花呗", "白条", "信用卡", "抖音月付", "美团月付", "分付",
 )
 UNDERSTAND_SYSTEM = """你是 Vita 生活管家的意图理解模块。根据用户消息和已有数据，只输出 JSON，不要 markdown。
 
@@ -56,6 +58,7 @@ data：
 硬性规则：
 - 「花呗支付500」「用花呗付了300」→ transaction(expense)+account=花呗；禁止写成 balance 把花呗设为500
 - 「京东白条支付50」→ transaction + 若尚无周期提醒则同时给出 monthly reminder；并说明计入本月/下月账单
+- 「抖音月付支付300」→ transaction(account=抖音月付) + monthly reminder；即使资产列表尚无该账户也要新建
 - 「白条支付300分3期」→ transaction + 每一期一张 reminder（含期数与金额）
 - 「吃饭花了50，工商银行付款」→ transaction(expense,餐饮)+account=工行
 - 提到花呗/白条/借呗/信用卡欠款（欠/待还/应还）时，必须同时给出：① balance（kind=liability）② reminder（type=bill，含还款日）
@@ -232,21 +235,25 @@ def _looks_like_payment(text: str) -> bool:
         re.search(
             r"支付|付款|付了|花了|消费|买了|刷了|"
             r"用.{0,8}(?:付|支付|付款)|"
-            r"(?:花呗|白条|借呗|信用卡|微信|支付宝|建行|工行|招行).{0,4}(?:支付|付款|付了|付)",
+            r"(?:花呗|白条|借呗|信用卡|月付|分付|微信|支付宝|建行|工行|招行).{0,4}(?:支付|付款|付了|付)",
             text or "",
         )
     )
 
 
 def _extract_pay_account(text: str) -> str:
-    """从「花呗支付 / 工行付款 / 用微信付」提取付款账户。"""
+    """从「花呗支付 / 工行付款 / 抖音月付支付 / 用微信付」提取付款账户。"""
     text = _normalize_finance_text(text or "")
     names = (
         "京东白条",
+        "抖音月付",
+        "美团月付",
         "花呗",
         "白条",
         "借呗",
         "信用卡",
+        "微信分付",
+        "分付",
         "微信",
         "支付宝",
         "建行",
@@ -259,13 +266,13 @@ def _extract_pay_account(text: str) -> str:
     )
     joined = "|".join(names)
     m = re.search(
-        rf"(?:用|通过|经)\s*({joined})\s*(?:来)?(?:支付|付款|付了|付|刷|花了|消费)?",
+        rf"(?:用|通过|经)\s*({joined}|[\u4e00-\u9fa5]{{2,8}}月付)\s*(?:来)?(?:支付|付款|付了|付|刷|花了|消费)?",
         text,
     )
     if m:
         return m.group(1)
     m = re.search(
-        rf"({joined})\s*(?:支付|付款|付了|付的|付)",
+        rf"({joined}|[\u4e00-\u9fa5]{{2,8}}月付)\s*(?:支付|付款|付了|付的|付)",
         text,
     )
     if m:
@@ -466,7 +473,7 @@ def _regex_extract_debts(text: str) -> list[dict]:
     amt = _amount_token_re()
 
     debt_pat = re.compile(
-        r"(花呗|京东白条|白条|借呗|信用卡)"
+        r"(抖音月付|美团月付|花呗|京东白条|白条|借呗|信用卡|微信分付|[\u4e00-\u9fa5]{2,8}月付)"
         r"(?:\s*(?:的)?(?:欠款|欠费|欠|待还|应还|账单))?"
         r"\s*(?:为|是|：|:)?\s*"
         rf"({amt})\s*元?"
@@ -483,7 +490,10 @@ def _regex_extract_debts(text: str) -> list[dict]:
         if amount is None or amount < 0:
             continue
         window = text[m.end() : m.end() + 100]
-        cut = re.search(r"花呗|京东白条|白条|借呗|信用卡", window)
+        cut = re.search(
+            r"抖音月付|美团月付|花呗|京东白条|白条|借呗|信用卡|微信分付|[\u4e00-\u9fa5]{2,8}月付",
+            window,
+        )
         if cut:
             window = window[: cut.start()]
         # 还款日可在整句任意处（「花呗欠三百，……每个月28号还款」）
@@ -534,10 +544,10 @@ def _regex_extract_debts(text: str) -> list[dict]:
         r"(?:还|还款|提醒).{0,20}(?:每个月|每月)(?:的)?\s*(\d{1,2})[日号]",
         text,
     )
-    if monthly and re.search(r"花呗|白条|借呗|信用卡", text):
+    if monthly and re.search(r"花呗|白条|借呗|信用卡|月付|分付", text):
         day = int(monthly.group(1) or monthly.group(2))
         due = _parse_cn_due(f"每月{day}号")
-        for name in ("花呗", "京东白条", "白条", "借呗", "信用卡"):
+        for name in ("抖音月付", "美团月付", "花呗", "京东白条", "白条", "借呗", "信用卡", "微信分付"):
             if name == "白条" and "京东白条" in text:
                 continue
             if name not in text:
@@ -677,7 +687,7 @@ def _enrich_actions_with_debts(text: str, actions: list[dict]) -> list[dict]:
             bal_names.add(name)
         elif item.get("intent") == "reminder":
             name = ""
-            for kw in ("花呗", "京东白条", "白条", "借呗", "信用卡"):
+            for kw in ("抖音月付", "美团月付", "花呗", "京东白条", "白条", "借呗", "信用卡", "微信分付"):
                 if kw in str(data.get("title") or ""):
                     name = kw
                     break
@@ -1083,7 +1093,7 @@ def _enrich_credit_payment_actions(
 
     if not credit_txns and _looks_like_payment(source):
         # 文本里点名信用产品但 actions 尚未带 account
-        for name in ("京东白条", "花呗", "白条", "借呗", "信用卡"):
+        for name in ("抖音月付", "美团月付", "京东白条", "花呗", "白条", "借呗", "信用卡", "微信分付"):
             if name in source and is_credit_product(name):
                 # 由调用方已生成 txn；这里仅兜底
                 break
@@ -1365,6 +1375,8 @@ def generate_chat_reply(
             "禁止拿上一轮未确认卡片来拖延本轮记账；本轮有记账卡就应请用户确认本轮卡。"
             "禁止说「系统没有提醒功能」「等以后再添」——若有提醒卡则已经生成。"
             "禁止编造「等旧卡入库后再补记本笔」——本笔若已有确认卡，确认即可写入。"
+            "信用付（花呗/白条/月付/分付）即使资产列表里还没有该账户，也应按下方确认卡新建负债账户，"
+            "禁止说「没有该账户所以记不了」或要求用户改用已有账户。"
         )
     else:
         parts.append("【系统已执行】无（本次未写入数据库）")
@@ -1412,7 +1424,8 @@ def generate_chat_reply(
             reply
             and re.search(
                 r"没有.{0,8}(提醒|功能)|等系统|以后再|尚未支持|还没.{0,6}功能|添此等|"
-                r"还没入库呢|等.{0,12}入库.{0,8}再|立马把.{0,30}补上",
+                r"还没入库呢|等.{0,12}入库.{0,8}再|立马把.{0,30}补上|"
+                r"没有.{0,8}账户|无「[^」]+」|并🈚️|改用已有|指定已有账户",
                 reply,
             )
         )
