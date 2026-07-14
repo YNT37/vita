@@ -82,8 +82,8 @@ class Reminder(db.Model):
     note = db.Column(db.String(200), default="")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     notified_at = db.Column(db.DateTime, nullable=True)
-    # none / monthly / weekly
-    repeat = db.Column(db.String(16), default="none")
+    # none / monthly / weekly（列名避免 Postgres 保留字 repeat）
+    recurrence = db.Column(db.String(16), default="none")
     # 关联负债账户名（如花呗），到期时自动带上当前欠款
     linked_asset_name = db.Column(db.String(32), default="")
 
@@ -96,7 +96,7 @@ class Reminder(db.Model):
             "done": self.done,
             "note": self.note or "",
             "notified_at": self.notified_at.isoformat() if self.notified_at else None,
-            "repeat": self.repeat or "none",
+            "repeat": self.recurrence or "none",
             "linked_asset_name": self.linked_asset_name or "",
         }
 

@@ -74,7 +74,7 @@ def dispatch_due_reminders(user_id: int | None = None) -> dict:
                 f"### Vita 到期提醒\n\n"
                 f"- 用户：{uname}\n"
                 f"- 类型：{label}\n"
-                f"- 周期：{REPEAT_LABEL.get(normalize_repeat(r.repeat), '一次')}\n"
+                f"- 周期：{REPEAT_LABEL.get(normalize_repeat(r.recurrence), '一次')}\n"
                 f"- 标题：{r.title}\n"
                 f"- 时间：{due_text}\n"
             )
@@ -87,7 +87,7 @@ def dispatch_due_reminders(user_id: int | None = None) -> dict:
             if result.get("ok"):
                 r.notified_at = now
                 sent += 1
-                if normalize_repeat(r.repeat) != "none":
+                if normalize_repeat(r.recurrence) != "none":
                     if advance_recurring_reminder(r, now=now):
                         advanced += 1
             else:

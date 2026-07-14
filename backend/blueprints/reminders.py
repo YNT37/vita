@@ -131,7 +131,7 @@ def create_reminder():
         type=r_type,
         note=note,
         done=False,
-        repeat=repeat,
+        recurrence=repeat,
         linked_asset_name=linked,
     )
     db.session.add(reminder)
@@ -149,7 +149,7 @@ def update_reminder(reminder_id):
     advancing = False
     if "done" in data:
         want_done = bool(data["done"])
-        if want_done and normalize_repeat(reminder.repeat) != "none":
+        if want_done and normalize_repeat(reminder.recurrence) != "none":
             # 周期提醒：完成本期 → 推到下一期，保持未完成
             advancing = advance_recurring_reminder(reminder)
         else:
@@ -164,7 +164,7 @@ def update_reminder(reminder_id):
     if "note" in data:
         reminder.note = _validate_note(data.get("note"))
     if "repeat" in data:
-        reminder.repeat = _validate_repeat(data.get("repeat"))
+        reminder.recurrence = _validate_repeat(data.get("repeat"))
     if "linked_asset_name" in data:
         reminder.linked_asset_name = _validate_linked_asset(data.get("linked_asset_name"))
     db.session.commit()

@@ -1387,7 +1387,7 @@ def apply_reminder(user_id: int, data: dict) -> str:
         due_at=due_at,
         type=r_type,
         note=note,
-        repeat=repeat,
+        recurrence=repeat,
         linked_asset_name=linked,
     )
     db.session.add(reminder)

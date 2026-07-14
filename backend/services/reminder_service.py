@@ -45,16 +45,16 @@ def infer_linked_asset_name(title: str, note: str = "") -> str:
 
 def advance_recurring_reminder(reminder: Reminder, now: datetime | None = None) -> bool:
     """周期提醒完成一期后：推进 due_at，保持未完成以便下期再提醒。"""
-    if normalize_repeat(getattr(reminder, "repeat", None)) == "none":
+    if normalize_repeat(getattr(reminder, "recurrence", None)) == "none":
         return False
     base = reminder.due_at or (now or datetime.now())
-    nxt = next_due_at(base, reminder.repeat)
+    nxt = next_due_at(base, reminder.recurrence)
     # 若仍不晚于现在（例如积压），继续往后推，最多 24 次
     cursor = now or datetime.now()
     for _ in range(24):
         if nxt > cursor:
             break
-        nxt = next_due_at(nxt, reminder.repeat)
+        nxt = next_due_at(nxt, reminder.recurrence)
     reminder.due_at = nxt
     reminder.done = False
     reminder.notified_at = None
