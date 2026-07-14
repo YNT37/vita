@@ -62,7 +62,11 @@ def create_app(config_class=Config):
 
 
 def _ensure_schema():
-    """轻量迁移：为已有 SQLite/PG 表补列。"""
+    """轻量迁移：为已有 SQLite/PG 表补列。
+
+    每条 ALTER 单独事务：Postgres 上一句失败会 abort 整段事务，
+    若包在同一个 begin() 里，后续新列永远加不上。
+    """
     from sqlalchemy import text
 
     stmts = [
@@ -74,22 +78,23 @@ def _ensure_schema():
         "ALTER TABLE assets ADD COLUMN repay_due_day INTEGER",
         "ALTER TABLE assets ADD COLUMN repay_statement_day INTEGER",
     ]
-    with db.engine.begin() as conn:
-        for sql in stmts:
-            try:
-                conn.execute(text(sql))
-            except Exception:
-                pass
-        # 旧负债备注回填 kind
+    for sql in stmts:
         try:
+            with db.engine.begin() as conn:
+                conn.execute(text(sql))
+        except Exception:
+            pass
+    # 旧负债备注回填 kind
+    try:
+        with db.engine.begin() as conn:
             conn.execute(
                 text("UPDATE assets SET kind='liability' WHERE note LIKE '%负债%'")
             )
             conn.execute(
                 text("UPDATE assets SET kind='asset' WHERE kind IS NULL OR kind=''")
             )
-        except Exception:
-            pass
+    except Exception:
+        pass
 
 
 def _start_dispatch_loop(app: Flask):
