@@ -27,6 +27,20 @@ yarn-error.log*
 Thumbs.db
 .idea/
 .vscode/
+.cursor/
+
+# Python bytecode / caches
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local temp / migrate leftovers
+*.tar.gz
+.tmp/
+temp/
 
 deploy/run/
 deploy/.env

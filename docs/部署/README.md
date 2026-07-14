@@ -7,7 +7,7 @@
 | 文档 | 场景 | 访问 |
 |------|------|------|
 | [本地 Docker](./本地-Docker.md) | 本机一键跑通 / 演示 | `http://localhost` |
-| [云服务器 Docker](./云服务器-Docker.md) | 公网考核演示 | `http://公网IP/` |
+| [云服务器 Docker](./云服务器-Docker.md) | 公网考核演示 | **https://vita.sanseven.top/** |
 
 默认数据库为 **SQLite**（compose 数据卷）。可选升级 **PostgreSQL**：见各文档末尾，或 [数据库说明](./数据库.md)。
 

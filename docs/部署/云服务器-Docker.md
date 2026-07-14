@@ -105,8 +105,16 @@ docker compose up -d --build
 curl -s http://127.0.0.1/api/health
 ```
 
-浏览器：**http://你的公网IP/**  
-（不要用 `:3000` / `:5000`，流量走 80，由 Caddy 转发。）
+浏览器：**http://你的公网IP/** 或配置域名后的 **https://你的域名/**  
+（不要用 `:3000` / `:5000`，流量走 80/443，由 Caddy 转发。）
+
+### HTTPS（推荐）
+
+1. 域名 A 记录指向服务器公网 IP，安全组放行 **80、443**。  
+2. 编辑 `deploy/Caddyfile`，把站点名改成你的域名（当前生产为 `vita.sanseven.top`）。  
+3. `docker-compose.postgres.yml` 中 Caddy 需映射 `443:443`，并挂载 `caddy_data` 卷保存证书。  
+4. `docker compose -f docker-compose.postgres.yml --env-file deploy/postgres.env up -d caddy`  
+   Caddy 会自动申请并续期 Let's Encrypt 证书；HTTP 自动跳转 HTTPS。
 
 ---
 

@@ -106,12 +106,15 @@ docker compose up -d --build
 默认 SQLite；可选 Postgres 见部署文档。
 
 ## 🌐 线上地址
-- `http://<公网IP>/`（Docker · 端口 80）
+- **https://vita.sanseven.top/**（生产 · HTTPS · Let's Encrypt）
+- 备用 IP：`http://60.204.132.56/`（证书绑定域名，请优先用域名）
 
 ## 📚 文档
 | 文档 | 说明 |
 |---|---|
-| [docs/部署/README.md](docs/部署/README.md) | **部署（本地 / 云 · Docker）** |
+| [docs/资料索引.md](docs/资料索引.md) | **交付材料总目录** |
+| [docs/演示大纲.md](docs/演示大纲.md) | **录屏 / 演示脚本** |
+| [docs/部署/README.md](docs/部署/README.md) | 部署（本地 / 云 · Docker） |
 | [docs/需求文档.md](docs/需求文档.md) | 功能需求 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构 |
 | [docs/API文档.md](docs/API文档.md) | 接口 |
