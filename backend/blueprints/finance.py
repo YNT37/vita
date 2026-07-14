@@ -7,7 +7,10 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from models import Transaction, Asset
 from errors import ApiError
-from services.reminder_service import sync_liability_repay_reminder
+from services.reminder_service import (
+    clear_liability_repay_reminders,
+    sync_liability_repay_reminder,
+)
 
 finance_bp = Blueprint("finance", __name__, url_prefix="/api")
 
@@ -37,6 +40,7 @@ def _apply_repay_fields(asset: Asset, data: dict, *, old_name: str | None = None
             data.get("repay_statement_day"), "repay_statement_day"
         )
     if (asset.kind or "") != "liability":
+        clear_liability_repay_reminders(asset.user_id, asset.name, old_name=old_name)
         return
     due = asset.repay_due_day
     if due:
@@ -50,6 +54,8 @@ def _apply_repay_fields(asset: Asset, data: dict, *, old_name: str | None = None
             )
         except ValueError as e:
             raise ApiError("invalid_day", str(e), 400, "repay_due_day") from e
+    elif "repay_due_day" in data:
+        clear_liability_repay_reminders(asset.user_id, asset.name, old_name=old_name)
 
 
 def _parse_date(s, field="date"):
@@ -93,6 +99,10 @@ def create_transaction():
         raise ApiError("invalid_note", "备注不超过200位", 400, "note")
     d = _parse_date(data.get("date"))
     account = (data.get("account") or data.get("asset_name") or "").strip()[:32]
+    if account:
+        from services.repay_policy import normalize_product
+
+        account = (normalize_product(account) or account)[:32]
     txn = Transaction(
         user_id=_uid(),
         type=t_type,
@@ -296,6 +306,7 @@ def delete_asset(asset_id):
     asset = Asset.query.filter_by(id=asset_id, user_id=_uid()).first()
     if not asset:
         raise ApiError("not_found", "资产不存在", 404)
+    clear_liability_repay_reminders(asset.user_id, asset.name)
     db.session.delete(asset)
     db.session.commit()
     return jsonify({"ok": True}), 200

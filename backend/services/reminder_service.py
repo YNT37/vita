@@ -167,6 +167,40 @@ def sync_liability_repay_reminder(
     return reminder
 
 
+def clear_liability_repay_reminders(
+    user_id: int,
+    asset_name: str,
+    *,
+    old_name: str | None = None,
+) -> int:
+    """删除账户关联的每月还款提醒（改类型/清空还款日/删账户时调用）。"""
+    from extensions import db
+
+    name = (asset_name or "").strip()[:32]
+    if not name:
+        return 0
+    search_names = {name}
+    if old_name and old_name.strip():
+        search_names.add(old_name.strip()[:32])
+    rows = (
+        Reminder.query.filter(
+            Reminder.user_id == user_id,
+            Reminder.done.is_(False),
+            Reminder.recurrence == "monthly",
+        )
+        .filter(
+            or_(
+                Reminder.linked_asset_name.in_(list(search_names)),
+                Reminder.title.in_([f"还{n}" for n in search_names]),
+            )
+        )
+        .all()
+    )
+    for r in rows:
+        db.session.delete(r)
+    return len(rows)
+
+
 def detect_repeat_from_text(text: str) -> str:
     if re.search(r"每个月|每月|每月的|月月", text or ""):
         return "monthly"

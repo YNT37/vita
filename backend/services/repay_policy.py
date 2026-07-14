@@ -456,6 +456,11 @@ def infer_statement_day(product: str, due_day: int) -> int:
     return 1
 
 
+def policy_to_setting_key(product: str) -> str:
+    canon = normalize_product(product) or (product or "").strip()
+    return f"repay_cycle:{canon}"
+
+
 def load_user_cycle(get_setting, user_id: int, product: str) -> tuple[int | None, int | None]:
     """从 settings 读取用户自定义账单日/还款日。"""
     try:

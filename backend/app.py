@@ -71,13 +71,17 @@ def _ensure_schema():
 
     stmts = [
         "ALTER TABLE assets ADD COLUMN kind VARCHAR(16) DEFAULT 'asset'",
-        "ALTER TABLE reminders ADD COLUMN notified_at DATETIME",
+        "ALTER TABLE reminders ADD COLUMN notified_at TIMESTAMP",
         "ALTER TABLE reminders ADD COLUMN recurrence VARCHAR(16) DEFAULT 'none'",
         "ALTER TABLE reminders ADD COLUMN linked_asset_name VARCHAR(32) DEFAULT ''",
         "ALTER TABLE transactions ADD COLUMN account VARCHAR(32) DEFAULT ''",
         "ALTER TABLE assets ADD COLUMN repay_due_day INTEGER",
         "ALTER TABLE assets ADD COLUMN repay_statement_day INTEGER",
     ]
+    # SQLite 用 DATETIME 别名更稳妥；若 TIMESTAMP 失败再试 DATETIME
+    dialect = db.engine.dialect.name
+    if dialect == "sqlite":
+        stmts[1] = "ALTER TABLE reminders ADD COLUMN notified_at DATETIME"
     for sql in stmts:
         try:
             with db.engine.begin() as conn:

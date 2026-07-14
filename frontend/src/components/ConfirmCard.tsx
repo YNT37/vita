@@ -180,6 +180,7 @@ type Props = {
 
 export function ConfirmCard({ card, busy, onChange, onConfirm, onDismiss }: Props) {
   const [localBusy, setLocalBusy] = useState(false);
+  const [localError, setLocalError] = useState("");
   const disabled = busy || localBusy || card.status !== "pending";
 
   if (card.status === "dismissed") return null;
@@ -193,11 +194,20 @@ export function ConfirmCard({ card, busy, onChange, onConfirm, onDismiss }: Prop
   }
 
   function setDraft(patch: Partial<ConfirmDraft>) {
+    setLocalError("");
     onChange(card.id, { ...card.draft, ...patch });
   }
 
   async function handleConfirm() {
+    if (card.intent === "balance" && (card.draft.kind || "asset") === "liability") {
+      const due = Number(card.draft.repay_due_day);
+      if (!card.draft.repay_due_day?.trim() || Number.isNaN(due) || due < 1 || due > 28) {
+        setLocalError("信用/负债账户请填写每月还款日（1–28）");
+        return;
+      }
+    }
     setLocalBusy(true);
+    setLocalError("");
     try {
       await onConfirm(card.id);
     } finally {
@@ -458,6 +468,9 @@ export function ConfirmCard({ card, busy, onChange, onConfirm, onDismiss }: Prop
           取消
         </button>
       </div>
+      {localError && (
+        <p className="text-xs text-red-500">{localError}</p>
+      )}
     </div>
   );
 }

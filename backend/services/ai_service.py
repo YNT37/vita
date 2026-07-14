@@ -274,15 +274,17 @@ def _extract_pay_account(text: str) -> str:
         rf"(?:用|通过|经)\s*({joined}|[\u4e00-\u9fa5]{{2,8}}月付)\s*(?:来)?(?:支付|付款|付了|付|刷|花了|消费)?",
         text,
     )
-    if m:
-        return m.group(1)
-    m = re.search(
-        rf"({joined}|[\u4e00-\u9fa5]{{2,8}}月付)\s*(?:支付|付款|付了|付的|付)",
-        text,
-    )
-    if m:
-        return m.group(1)
-    return ""
+    if not m:
+        m = re.search(
+            rf"({joined}|[\u4e00-\u9fa5]{{2,8}}月付)\s*(?:支付|付款|付了|付的|付)",
+            text,
+        )
+    if not m:
+        return ""
+    raw = (m.group(1) or "").strip()
+    from services.repay_policy import normalize_product
+
+    return (normalize_product(raw) or raw)[:32]
 
 
 def _infer_expense_category(text: str) -> str:
@@ -487,8 +489,11 @@ def _regex_extract_debts(text: str) -> list[dict]:
         name, amount_s = m.group(1), m.group(2)
         if name == "白条" and text[max(0, m.start() - 2) : m.start()] == "京东":
             continue
+        from services.repay_policy import normalize_product
+
+        name = (normalize_product(name) or name)[:32]
         # 「花呗支付500」中间是支付动词 → 消费记账，不是欠款余额
-        between = text[m.start(1) + len(name) : m.start(2)]
+        between = text[m.start(1) + len(m.group(1)) : m.start(2)]
         if re.search(r"支付|付款|付了|花了|消费|买了|刷了", between):
             continue
         amount = _parse_cn_amount(amount_s)
@@ -823,9 +828,22 @@ def _normalize_one_action(intent: str, data: dict, source_text: str) -> dict | N
                 kind = "liability" if _is_liability_name(name) else "asset"
         if kind == "liability" and "负债" not in note and "信用" not in note:
             note = ("信用/负债账户；" + note).strip("；")[:200]
+        data_out: dict = {"name": name, "balance": balance, "kind": kind, "note": note}
+        for key in ("repay_due_day", "repay_statement_day"):
+            if key not in data:
+                continue
+            raw = data.get(key)
+            if raw is None or str(raw).strip() == "":
+                continue
+            try:
+                day = int(raw)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= day <= 28:
+                data_out[key] = day
         return {
             "intent": "balance",
-            "data": {"name": name, "balance": balance, "kind": kind, "note": note},
+            "data": data_out,
         }
     if intent == "transaction":
         t_type = (data.get("type") or "expense").strip()
@@ -1218,18 +1236,23 @@ def _enrich_credit_payment_actions(
                 )
                 if mode == "payment":
                     rem["data"]["due_at"] = classification["due_at"]
-                out.append(rem)
-                # 把还款日写回账户草稿，便于确认入库后落库
                 if mode == "account":
+                    # 还款日写入账户草稿，确认后由 sync_liability_repay_reminder 落库，避免重复提醒卡
                     item["data"] = {
                         **data,
                         "repay_due_day": int(policy["due_day"]),
                         "repay_statement_day": int(policy["statement_day"]),
                     }
-                explains.append(
-                    f"检测到「{product}」尚无周期还款提醒，已拟定每月"
-                    f"{policy['due_day']}号提醒，请确认是否与 App 一致。"
-                )
+                    explains.append(
+                        f"已写入「{product}」默认还款日每月{policy['due_day']}号"
+                        "（确认账户后自动同步提醒，可按 App 修改）。"
+                    )
+                else:
+                    out.append(rem)
+                    explains.append(
+                        f"检测到「{product}」尚无周期还款提醒，已拟定每月"
+                        f"{policy['due_day']}号提醒，请确认是否与 App 一致。"
+                    )
 
     return out, "\n".join(explains).strip()
 
@@ -1629,19 +1652,8 @@ def _regex_parse_credit_account(text: str) -> dict | None:
             },
         }
     ]
-    if due_day:
-        from services.repay_policy import build_monthly_reminder
-
-        rem = build_monthly_reminder(
-            name,
-            due_day,
-            note=f"每月{due_day}号还款（用户指定）",
-        )
-        actions.append(rem)
-
-    if len(actions) == 1:
-        return {"intent": "balance", "data": actions[0]["data"], "actions": actions}
-    return {"intent": "batch", "data": {}, "actions": actions}
+    # 有还款日时由确认账户后的 sync_liability_repay_reminder 建提醒，避免重复卡
+    return {"intent": "balance", "data": actions[0]["data"], "actions": actions}
 
 
 def _regex_parse_balance(text: str) -> dict | None:
@@ -1910,11 +1922,31 @@ def _adjust_account_for_transaction(
     reverse: bool = False,
 ) -> str:
     """付款账户联动：负债账户增加欠款，资产账户扣减余额。reverse=True 时冲正。"""
-    name = (account or "").strip()[:32]
-    if not name:
+    raw = (account or "").strip()[:32]
+    if not raw:
         return ""
-    asset = Asset.query.filter_by(user_id=user_id, name=name).first()
-    is_liab = _is_liability_name(name) or (asset is not None and (asset.kind or "") == "liability")
+    from services.repay_policy import normalize_product
+
+    canon = (normalize_product(raw) or raw)[:32]
+    asset = Asset.query.filter_by(user_id=user_id, name=raw).first()
+    if not asset and canon != raw:
+        asset = Asset.query.filter_by(user_id=user_id, name=canon).first()
+    if not asset:
+        assets = Asset.query.filter_by(user_id=user_id).all()
+        asset = next(
+            (
+                a
+                for a in assets
+                if normalize_product(a.name or "") == canon
+                or canon in (a.name or "")
+                or (a.name or "") in canon
+            ),
+            None,
+        )
+    name = (asset.name if asset else canon)[:32]
+    is_liab = _is_liability_name(name) or (
+        asset is not None and (asset.kind or "") == "liability"
+    )
     if t_type == "expense":
         delta = amount if is_liab else -amount
     else:
@@ -1979,9 +2011,11 @@ def apply_reminder(user_id: int, data: dict) -> str:
         normalize_repeat,
     )
 
-    repeat = normalize_repeat(data.get("repeat"))
-    if repeat == "none":
+    repeat = data.get("repeat")
+    if repeat is None or str(repeat).strip() == "":
         repeat = detect_repeat_from_text(f"{title} {note}")
+    else:
+        repeat = normalize_repeat(repeat)
     linked = (data.get("linked_asset_name") or "").strip()[:32]
     if not linked and r_type == "bill":
         linked = infer_linked_asset_name(title, note)
