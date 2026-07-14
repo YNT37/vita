@@ -106,6 +106,7 @@ def ai_chat():
         context,
         ai_cfg,
         history_text=_history_user_text(history),
+        user_id=uid,
     )
     query_answer = None
     if understanding.get("intent") == "query":
@@ -114,6 +115,7 @@ def ai_chat():
 
     # 写入类意图不自动落库，交由前端确认卡片上传
     pending = extract_pending_actions(understanding)
+    repay_explain = (understanding.get("repay_explain") or "").strip() or None
 
     reply = generate_chat_reply(
         persona,
@@ -125,6 +127,7 @@ def ai_chat():
         action_note=None,
         query_answer=query_answer,
         pending_count=len(pending),
+        repay_explain=repay_explain,
     )
 
     db.session.add(ChatMessage(user_id=uid, role="user", content=message, persona=persona))
@@ -137,6 +140,7 @@ def ai_chat():
         "intent": understanding.get("intent"),
         "wrote": False,
         "pending": pending,
+        "repay_explain": repay_explain,
     }), 200
 
 

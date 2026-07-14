@@ -55,6 +55,8 @@ data：
 
 硬性规则：
 - 「花呗支付500」「用花呗付了300」→ transaction(expense)+account=花呗；禁止写成 balance 把花呗设为500
+- 「京东白条支付50」→ transaction + 若尚无周期提醒则同时给出 monthly reminder；并说明计入本月/下月账单
+- 「白条支付300分3期」→ transaction + 每一期一张 reminder（含期数与金额）
 - 「吃饭花了50，工商银行付款」→ transaction(expense,餐饮)+account=工行
 - 提到花呗/白条/借呗/信用卡欠款（欠/待还/应还）时，必须同时给出：① balance（kind=liability）② reminder（type=bill，含还款日）
 - 若说「每月/每个月 X 号」，reminder.repeat=monthly，并填 linked_asset_name（如花呗）
@@ -68,7 +70,13 @@ data：
 → batch：balance(花呗,800,liability) + reminder(还花呗 800元, due 本年7月25日)
 
 用户：「花呗支付500」
-→ transaction：expense 500，account=花呗，category=其他
+→ transaction：expense 500，account=花呗；并附带还花呗的 monthly reminder（若尚无）
+
+用户：「京东白条支付50」
+→ transaction：expense 50，account=京东白条 + monthly reminder
+
+用户：「白条300分3期」
+→ transaction 300 + 3 张分期 reminder
 
 用户：「吃饭花了50，工商银行付款」
 → transaction：expense 50，category=餐饮，account=工行
@@ -272,7 +280,9 @@ def _infer_expense_category(text: str) -> str:
         return "交通"
     if re.search(r"房租|水电|物业|话费|网费", text):
         return "居住"
-    if re.search(r"超市|日用|购物|淘宝|京东|拼多多", text):
+    if re.search(r"超市|日用|购物|淘宝|拼多多", text) or (
+        re.search(r"京东", text) and not re.search(r"白条", text)
+    ):
         return "购物"
     return "其他"
 
@@ -968,7 +978,12 @@ def _fallback_understand(message: str, context: dict | None) -> dict:
         }
     return {"intent": "chat", "should_act": False, "data": {}, "actions": [], "summary": ""}
 
-def _finalize_understanding(source: str, result: dict) -> dict:
+def _finalize_understanding(
+    source: str,
+    result: dict,
+    context: dict | None = None,
+    user_id: int | None = None,
+) -> dict:
     """统一补全花呗/白条等负债动作，保证确认卡同时出现账户+提醒。"""
     actions = list(result.get("actions") or [])
     if result.get("should_act") and not actions:
@@ -977,6 +992,9 @@ def _finalize_understanding(source: str, result: dict) -> dict:
         if intent in ("balance", "transaction", "reminder"):
             actions = [{"intent": intent, "data": data}]
     actions = _enrich_actions_with_debts(source, actions)
+    actions, repay_explain = _enrich_credit_payment_actions(
+        source, actions, context=context, user_id=user_id
+    )
     # 仅有负债规则命中时也要强制 should_act
     if not actions:
         return result
@@ -985,15 +1003,173 @@ def _finalize_understanding(source: str, result: dict) -> dict:
         intent = "batch"
     elif len(actions) == 1:
         intent = actions[0]["intent"]
-    return {
+    summary = result.get("summary") or (
+        f"识别 {len(actions)} 项待确认" if len(actions) > 1 else result.get("summary") or ""
+    )
+    if repay_explain:
+        summary = f"{summary}｜{repay_explain[:180]}"
+    out = {
         **result,
         "intent": intent,
         "should_act": True,
         "data": {} if intent == "batch" else (actions[0].get("data") or {}),
         "actions": actions,
-        "summary": result.get("summary")
-        or (f"识别 {len(actions)} 项待确认" if len(actions) > 1 else result.get("summary") or ""),
+        "summary": summary,
     }
+    if repay_explain:
+        out["repay_explain"] = repay_explain
+    return out
+
+
+def _collect_context_reminders(context: dict | None, user_id: int | None) -> list[dict]:
+    ctx = context or {}
+    rem = list(ctx.get("reminders_pending") or []) + list(ctx.get("reminders_today") or [])
+    if user_id is None:
+        return rem
+    try:
+        from models import Reminder
+
+        rows = (
+            Reminder.query.filter_by(user_id=user_id, done=False)
+            .order_by(Reminder.due_at.asc())
+            .limit(50)
+            .all()
+        )
+        for r in rows:
+            rem.append(r.to_dict())
+    except Exception:
+        pass
+    return rem
+
+
+def _enrich_credit_payment_actions(
+    source: str,
+    actions: list[dict],
+    *,
+    context: dict | None = None,
+    user_id: int | None = None,
+) -> tuple[list[dict], str]:
+    """信用账户支付：补充账单归属说明、周期提醒或分期逐期提醒。"""
+    from services.repay_policy import (
+        build_installment_reminders,
+        build_monthly_reminder,
+        classify_charge,
+        enrich_explain_with_web,
+        extract_due_day_from_reminders,
+        has_monthly_reminder,
+        infer_statement_day,
+        is_credit_product,
+        normalize_product,
+        parse_installment,
+        resolve_policy,
+    )
+
+    out = list(actions)
+    explains: list[str] = []
+    reminders = _collect_context_reminders(context, user_id)
+
+    # 找信用账户相关的支出
+    credit_txns = []
+    for a in out:
+        if a.get("intent") != "transaction":
+            continue
+        data = a.get("data") or {}
+        if (data.get("type") or "expense") != "expense":
+            continue
+        account = normalize_product(data.get("account") or "")
+        if not is_credit_product(account):
+            continue
+        credit_txns.append((a, account, data))
+
+    if not credit_txns and _looks_like_payment(source):
+        # 文本里点名信用产品但 actions 尚未带 account
+        for name in ("京东白条", "花呗", "白条", "借呗", "信用卡"):
+            if name in source and is_credit_product(name):
+                # 由调用方已生成 txn；这里仅兜底
+                break
+
+    for item, product, data in credit_txns:
+        amount = float(data.get("amount") or 0)
+        user_due = extract_due_day_from_reminders(product, reminders)
+        user_statement = infer_statement_day(product, user_due) if user_due else None
+        policy = resolve_policy(
+            product,
+            statement_day=user_statement,
+            due_day=user_due,
+        )
+        if not policy:
+            continue
+        classification = classify_charge(policy)
+        explain = enrich_explain_with_web(policy, classification)
+        explains.append(explain)
+
+        # 备注写入账单归属
+        note = str(data.get("note") or source)[:200]
+        tag = f"计入{classification['period']}；应还日{classification['due_date']}"
+        if tag not in note:
+            data = {
+                **data,
+                "note": f"{note}；{tag}"[:200],
+                "account": product,
+                "bill_period": classification["period"],
+                "bill_due_date": classification["due_date"],
+            }
+            item["data"] = data
+
+        inst = parse_installment(source, amount)
+        if inst:
+            first_due = datetime.strptime(classification["due_date"], "%Y-%m-%d").date()
+            # 若计入下月账单，首期还款日已是 classification.due_date
+            installments = build_installment_reminders(
+                product,
+                total=amount,
+                periods=int(inst["periods"]),
+                first_due=first_due,
+                per_amount=inst.get("per_amount"),
+            )
+            # 去掉已有同名分期草稿，再追加
+            out = [
+                a
+                for a in out
+                if not (
+                    a.get("intent") == "reminder"
+                    and product in str((a.get("data") or {}).get("title") or "")
+                    and "期" in str((a.get("data") or {}).get("title") or "")
+                )
+            ]
+            out.extend(installments)
+            explains.append(
+                f"已按{inst['periods']}期拆分，每期约 {inst.get('per_amount') or '?'} 元，"
+                "下方为每一期还款提醒，请核对金额与日期。"
+            )
+        elif not has_monthly_reminder(product, reminders):
+            # 尚无周期提醒 → 同步创建
+            already = any(
+                a.get("intent") == "reminder"
+                and (a.get("data") or {}).get("repeat") == "monthly"
+                and normalize_product((a.get("data") or {}).get("linked_asset_name") or "")
+                == product
+                for a in out
+            )
+            if not already:
+                rem = build_monthly_reminder(
+                    product,
+                    int(policy["due_day"]),
+                    note=(
+                        f"每月{policy['due_day']}号还款；"
+                        f"默认账单日{policy['statement_day']}号；"
+                        f"{classification['period']}"
+                    ),
+                )
+                # 用本笔归属的还款日作为首期 due
+                rem["data"]["due_at"] = classification["due_at"]
+                out.append(rem)
+                explains.append(
+                    f"检测到「{product}」尚无周期还款提醒，已按制度拟定每月"
+                    f"{policy['due_day']}号提醒，请确认是否与 App 一致。"
+                )
+
+    return out, "\n".join(explains).strip()
 
 
 def understand_message(
@@ -1001,11 +1177,15 @@ def understand_message(
     context: dict | None = None,
     ai_config: dict | None = None,
     history_text: str | None = None,
+    user_id: int | None = None,
 ) -> dict:
     """统一意图理解：LLM 优先，规则兜底；多账户汇报强制批量写入。"""
     message = _truncate(message, MAX_CONTENT_LEN)
     if not message:
         return {"intent": "unknown", "should_act": False, "data": {}, "actions": [], "summary": ""}
+
+    def _fin(src: str, result: dict) -> dict:
+        return _finalize_understanding(src, result, context=context, user_id=user_id)
 
     # 「同步/需要/记下来」但没带数字 → 从近期对话找回财务明细再写入
     source = message
@@ -1025,7 +1205,7 @@ def understand_message(
     # 支付/消费优先：避免「花呗支付500」「工行付款」被当成余额
     pay_txn = _regex_parse_transaction(source)
     if pay_txn:
-        return _finalize_understanding(
+        return _fin(
             source,
             {
                 "intent": "transaction",
@@ -1050,7 +1230,7 @@ def understand_message(
         else:
             actions = debt_actions
         if actions:
-            return _finalize_understanding(
+            return _fin(
                 source,
                 {
                     "intent": "batch",
@@ -1065,7 +1245,7 @@ def understand_message(
     if _looks_like_finance_report(source):
         actions = _regex_extract_batch(source)
         if len(actions) >= 2:
-            return _finalize_understanding(
+            return _fin(
                 source,
                 {
                     "intent": "batch",
@@ -1083,7 +1263,7 @@ def understand_message(
         ):
             actions = _regex_extract_batch(source) or debt_actions
             if actions:
-                return _finalize_understanding(
+                return _fin(
                     source,
                     {
                         "intent": "batch" if len(actions) > 1 else actions[0]["intent"],
@@ -1093,8 +1273,8 @@ def understand_message(
                         "summary": "纠正为财务写入",
                     },
                 )
-        return _finalize_understanding(source, result)
-    return _finalize_understanding(source, _fallback_understand(source, context))
+        return _fin(source, result)
+    return _fin(source, _fallback_understand(source, context))
 
 def execute_intent(user_id: int, understanding: dict) -> str | None:
     actions = understanding.get("actions") or []
@@ -1155,6 +1335,7 @@ def generate_chat_reply(
     action_note: str | None = None,
     query_answer: str | None = None,
     pending_count: int = 0,
+    repay_explain: str | None = None,
 ) -> str:
     persona = _valid_persona(persona)
     message = _truncate(message)
@@ -1165,6 +1346,13 @@ def generate_chat_reply(
     parts = [format_user_context(context)]
     if understanding and understanding.get("summary"):
         parts.append(f"【意图理解】{understanding['summary']}")
+    if repay_explain:
+        parts.append(
+            "【还款制度与账单归属】\n"
+            + repay_explain
+            + "\n请用角色语气向用户说明：本笔计入本月还是下月、建议还款日；"
+            "若新建了周期/分期提醒请提示核对确认卡；以 App 实际账单日为准可改卡。"
+        )
     if query_answer:
         parts.append(f"【查询结果】{query_answer}")
     if action_note:
@@ -1186,32 +1374,36 @@ def generate_chat_reply(
         if content:
             parts.append(f"{role}: {content}")
     parts.append(f"user: {message}")
-    # 有确认卡时优先用稳妥模板，避免模型胡编「没有提醒功能」
     if pending_count > 0:
+        repay_hint = ""
+        if repay_explain:
+            repay_hint = " " + repay_explain.split("\n")[0][:120]
         ask = {
             "butler": (
-                f"好的，本轮整理了 {pending_count} 项确认卡（记账会联动扣款/记欠款）。"
-                "请核对方才这几张，点确定后写入；与上一轮未确认的卡片互不影响。"
+                f"好的，本轮整理了 {pending_count} 项确认卡。"
+                f"{repay_hint}"
+                "请核对方才这几张（含还款日/分期若有），点确定后写入。"
             ),
             "servant": (
                 f"嗻！本轮奴才拟了 {pending_count} 条草稿在下方。"
-                "主子点确定即入库；花呗支付会加欠款，银行卡付款会扣余额。"
-                "先前未确认的卡片请另点，不挡本笔。"
+                f"{repay_hint}"
+                "主子点确定即入库；分期则每一期都在卡里，劳烦过目。"
             ),
             "sassy": (
-                f"本轮 {pending_count} 张卡在下面，核对点确定就行。"
-                "别拿旧卡当借口拖着；花呗付的会加欠款，卡付的会扣余额。"
+                f"本轮 {pending_count} 张卡在下面，核对点确定。"
+                f"{repay_hint}"
             ),
             "lover": (
-                f"本轮有 {pending_count} 张确认卡～你改好点确定就好。"
-                "这笔和之前未确认的分开处理哦。"
+                f"本轮有 {pending_count} 张确认卡～"
+                f"{repay_hint}"
+                "你改好还款日再点确定就好。"
             ),
         }
-        # 仍可尝试 LLM，但若回复像在否认功能/拖延本笔则回退模板
         user_prompt = (
             "以下是对话历史、用户数据与当前消息。请用角色语气自然回复。\n"
             "硬性规则：必须请用户确认【本轮】下方卡片；禁止声称没有提醒/记账功能；"
-            "禁止把未点确定的内容说成已入库；禁止用旧卡拖延本轮记账写入。\n"
+            "禁止把未点确定的内容说成已入库；禁止用旧卡拖延本轮记账写入。"
+            "若有【还款制度与账单归属】，必须简明说明本月/下月归属与还款日。\n"
             + "\n".join(parts)
         )
         provider, key, base, model = _ai_params(ai_config)
