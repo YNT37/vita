@@ -8,6 +8,7 @@ import { apiFetch, ApiError } from "@/lib/api";
 import { PageContainer } from "@/components/PageContainer";
 
 type ReminderType = "bill" | "life" | "anniversary";
+type RepeatType = "none" | "monthly" | "weekly";
 
 type Reminder = {
   id: number;
@@ -16,12 +17,23 @@ type Reminder = {
   type: ReminderType;
   done: boolean;
   note: string;
+  repeat?: RepeatType;
+  linked_asset_name?: string;
+  linked_balance?: number | null;
+  debt_summary?: string;
+  advanced?: boolean;
 };
 
 const TYPE_LABELS: Record<ReminderType, string> = {
   bill: "账单",
   life: "生活",
   anniversary: "纪念日",
+};
+
+const REPEAT_LABELS: Record<RepeatType, string> = {
+  none: "一次",
+  monthly: "每月",
+  weekly: "每周",
 };
 
 function formatDue(iso: string): string {
@@ -63,6 +75,8 @@ export default function RemindersPage() {
   const [title, setTitle] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [type, setType] = useState<ReminderType>("life");
+  const [repeat, setRepeat] = useState<RepeatType>("none");
+  const [linkedAsset, setLinkedAsset] = useState("");
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -73,7 +87,7 @@ export default function RemindersPage() {
     setError("");
     setLoading(true);
     try {
-      const list = await apiFetch<Reminder[]>("/api/reminders");
+      const list = await apiFetch<Reminder[]>("/api/reminders?with_debt=1");
       setItems(list);
       apiFetch("/api/serverchan/dispatch", { method: "POST", body: {} }).catch(() => {});
     } catch (err) {
@@ -105,6 +119,8 @@ export default function RemindersPage() {
           due_at: dueAt,
           type,
           note: note.trim(),
+          repeat,
+          linked_asset_name: linkedAsset.trim(),
         },
       });
       setItems((prev) =>
@@ -115,6 +131,8 @@ export default function RemindersPage() {
       setTitle("");
       setDueAt("");
       setType("life");
+      setRepeat("none");
+      setLinkedAsset("");
       setNote("");
       bump();
     } catch (err) {
@@ -190,7 +208,7 @@ export default function RemindersPage() {
       <header className="mb-4 sm:mb-6">
         <h1 className="text-xl sm:text-2xl font-semibold">日程提醒</h1>
         <p className="text-sm text-gray-500">
-          待办、账单与纪念日。浏览器弹窗可在「我的」开启。
+          支持每月/每周循环；还款提醒可关联花呗等账户，到期自动检查当前欠款。
         </p>
       </header>
 
@@ -227,6 +245,29 @@ export default function RemindersPage() {
                 <option value="bill">账单</option>
                 <option value="anniversary">纪念日</option>
               </select>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm mb-1">周期</label>
+              <select
+                className="w-full rounded-lg border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 outline-none focus:border-blue-500"
+                value={repeat}
+                onChange={(e) => setRepeat(e.target.value as RepeatType)}
+              >
+                <option value="none">仅一次</option>
+                <option value="monthly">每月重复</option>
+                <option value="weekly">每周重复</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm mb-1">关联欠款账户</label>
+              <input
+                className="w-full rounded-lg border border-black/15 dark:border-white/20 bg-transparent px-3 py-2 outline-none focus:border-blue-500"
+                value={linkedAsset}
+                onChange={(e) => setLinkedAsset(e.target.value)}
+                placeholder="如：花呗（可空）"
+              />
             </div>
           </div>
           <div>
@@ -291,6 +332,11 @@ export default function RemindersPage() {
                       <span className="text-xs rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">
                         {TYPE_LABELS[item.type]}
                       </span>
+                      {(item.repeat || "none") !== "none" && (
+                        <span className="text-xs rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 px-2 py-0.5">
+                          {REPEAT_LABELS[(item.repeat as RepeatType) || "none"]}
+                        </span>
+                      )}
                       {overdue && (
                         <span className="text-xs text-red-600">已逾期</span>
                       )}
@@ -301,6 +347,14 @@ export default function RemindersPage() {
                       )}
                     </div>
                     <p className="text-sm text-gray-500 mt-1">{formatDue(item.due_at)}</p>
+                    {item.debt_summary && (
+                      <p className="text-sm text-rose-600 mt-1">{item.debt_summary}</p>
+                    )}
+                    {item.linked_asset_name && !item.debt_summary && (
+                      <p className="text-sm text-gray-400 mt-1">
+                        关联账户：{item.linked_asset_name}
+                      </p>
+                    )}
                     {item.note && (
                       <p className="text-sm text-gray-400 mt-1">{item.note}</p>
                     )}
@@ -312,6 +366,11 @@ export default function RemindersPage() {
                       >
                         延后 1 天
                       </button>
+                      {(item.repeat || "none") !== "none" && (
+                        <span className="text-xs text-gray-400">
+                          勾选完成 = 进入下一期
+                        </span>
+                      )}
                     </div>
                   </div>
                   <button

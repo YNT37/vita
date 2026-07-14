@@ -645,7 +645,17 @@ docs/部署/{README,环境变量,数据库,A–E,常见问题}.md
 
 ---
 
-### #34 · 2026-07-14 · Cursor(Grok) · 花呗欠款同时出负债卡+还款提醒
+### #35 · 2026-07-14 · Cursor(Grok) · 周期还款提醒与欠款快照
+- 对应功能/文件：`reminder_service.py`、`reminders` API、`notify_service`、确认卡/提醒页、browser notify
+- Prompt：
+  > 提醒功能要周期提醒，且可以设置还款提醒，添加提醒后每个周期自动检查相应欠款信息
+- AI 原始输出：
+
+```text
+repeat=monthly/weekly；linked_asset_name；到期带欠款；完成推进下一期
+```
+
+- 采纳情况：全部采纳。
 - 对应功能/文件：`backend/services/ai_service.py`、`ConfirmCard.tsx`
 - Prompt：
   > ai还是有点问题l让他记入资产时，花呗欠款经常不弹窗，且没有设置提醒

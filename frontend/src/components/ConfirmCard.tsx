@@ -15,6 +15,8 @@ export type ConfirmDraft = {
   title?: string;
   due_at?: string;
   remType?: "bill" | "life" | "anniversary";
+  repeat?: "none" | "monthly" | "weekly";
+  linked_asset_name?: string;
   // balance
   name?: string;
   balance?: string;
@@ -71,6 +73,9 @@ export function pendingToCard(action: PendingAction, id: string): ConfirmCardSta
   }
   if (action.intent === "reminder") {
     const remType = String(data.type || "life");
+    const repeatRaw = String(data.repeat || "none");
+    const repeat =
+      repeatRaw === "monthly" || repeatRaw === "weekly" ? repeatRaw : "none";
     return {
       id,
       intent: "reminder",
@@ -80,6 +85,8 @@ export function pendingToCard(action: PendingAction, id: string): ConfirmCardSta
         due_at: toDatetimeLocal(data.due_at),
         remType:
           remType === "bill" || remType === "anniversary" ? remType : "life",
+        repeat,
+        linked_asset_name: String(data.linked_asset_name ?? ""),
         note: String(data.note ?? ""),
       },
     };
@@ -119,6 +126,8 @@ export function draftToBody(card: ConfirmCardState): Record<string, unknown> {
       due_at: (d.due_at || "").trim(),
       type: d.remType || "life",
       note: (d.note || "").trim(),
+      repeat: d.repeat || "none",
+      linked_asset_name: (d.linked_asset_name || "").trim(),
     };
   }
   return {
@@ -272,9 +281,36 @@ export function ConfirmCard({ card, busy, onChange, onConfirm, onDismiss }: Prop
               }
             >
               <option value="life">生活</option>
-              <option value="bill">账单</option>
+              <option value="bill">账单/还款</option>
               <option value="anniversary">纪念日</option>
             </select>
+          </label>
+          <label className="text-xs text-gray-500 space-y-1">
+            <span>周期</span>
+            <select
+              className={inputCls}
+              value={card.draft.repeat || "none"}
+              disabled={disabled}
+              onChange={(e) =>
+                setDraft({
+                  repeat: e.target.value as "none" | "monthly" | "weekly",
+                })
+              }
+            >
+              <option value="none">仅一次</option>
+              <option value="monthly">每月重复</option>
+              <option value="weekly">每周重复</option>
+            </select>
+          </label>
+          <label className="text-xs text-gray-500 space-y-1 sm:col-span-2">
+            <span>关联欠款账户（到期自动带上当前欠款）</span>
+            <input
+              className={inputCls}
+              value={card.draft.linked_asset_name || ""}
+              disabled={disabled}
+              placeholder="例如：花呗"
+              onChange={(e) => setDraft({ linked_asset_name: e.target.value })}
+            />
           </label>
           <label className="text-xs text-gray-500 space-y-1 sm:col-span-2">
             <span>备注</span>

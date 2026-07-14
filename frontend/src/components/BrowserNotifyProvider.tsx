@@ -22,8 +22,8 @@ export function BrowserNotifyProvider({ children }: { children: React.ReactNode 
   const check = useCallback(async () => {
     if (!user || !isBrowserNotifyEnabled()) return;
     try {
-      const list = await apiFetch<DueReminder[]>("/api/reminders");
-      notifyDueReminders(list);
+      const res = await apiFetch<{ items: DueReminder[] }>("/api/reminders/due-check");
+      notifyDueReminders(Array.isArray(res.items) ? res.items : []);
     } catch {
       // 忽略网络错误，下次再试
     }

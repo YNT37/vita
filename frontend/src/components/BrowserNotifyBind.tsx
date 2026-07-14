@@ -52,7 +52,7 @@ export function BrowserNotifyBind() {
       setEnabled(true);
       setMsg("已开启。到期提醒会在本机弹出（需保持网页打开或在后台标签页）。");
       // 立刻检查一次
-      const list = await apiFetch<DueReminder[]>("/api/reminders");
+      const list = await apiFetch<DueReminder[]>("/api/reminders?with_debt=1");
       const n = notifyDueReminders(list);
       if (n > 0) setMsg(`已开启，并弹出 ${n} 条到期提醒`);
     } catch (e) {

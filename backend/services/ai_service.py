@@ -49,11 +49,12 @@ should_act：用户明确汇报账户余额、欠款、记账、要求记下 →
 data：
 - balance: {name, balance(number), kind?: asset|liability, note?}
 - transaction: {type income|expense, amount, category, note?, date?}
-- reminder: {title, due_at ISO, type bill|life|anniversary, note?}
+- reminder: {title, due_at ISO, type bill|life|anniversary, note?, repeat?: none|monthly|weekly, linked_asset_name?}
 - query: {topic assets|expense|income|reminders|overview}
 
 硬性规则：
 - 提到花呗/白条/借呗/信用卡欠款时，必须同时给出：① balance（kind=liability）② reminder（type=bill，含还款日）
+- 若说「每月/每个月 X 号」，reminder.repeat=monthly，并填 linked_asset_name（如花呗）
 - 不能只记余额不建还款提醒；日期可用「七月25日」「7.25」「每月25号」等
 
 示例：
@@ -408,6 +409,9 @@ def _regex_extract_debts(text: str) -> list[dict]:
         if pay is None:
             pay = amount
         title = f"还{name} {pay:g}元"
+        from services.reminder_service import detect_repeat_from_text, infer_linked_asset_name
+
+        repeat = detect_repeat_from_text(due_src)
         actions.append(
             {
                 "intent": "reminder",
@@ -417,6 +421,8 @@ def _regex_extract_debts(text: str) -> list[dict]:
                     "type": "bill",
                     "note": f"总额{amount:g}"
                     + (f"；{window.strip()[:80]}" if window.strip() else ""),
+                    "repeat": repeat,
+                    "linked_asset_name": infer_linked_asset_name(name, ""),
                 },
             }
         )
@@ -460,6 +466,8 @@ def _regex_extract_debts(text: str) -> list[dict]:
             )
             if existing:
                 existing["data"]["due_at"] = due
+                existing["data"]["repeat"] = "monthly"
+                existing["data"]["linked_asset_name"] = name
                 note = str(existing["data"].get("note") or "")
                 if "每月" not in note:
                     existing["data"]["note"] = (note + f"；每月{day}号").strip("；")[:200]
@@ -482,6 +490,8 @@ def _regex_extract_debts(text: str) -> list[dict]:
                             "due_at": due,
                             "type": "bill",
                             "note": f"每月{day}号还款",
+                            "repeat": "monthly",
+                            "linked_asset_name": name,
                         },
                     }
                 )
@@ -734,6 +744,18 @@ def _normalize_one_action(intent: str, data: dict, source_text: str) -> dict | N
         r_type = (data.get("type") or "life").strip()
         if r_type not in ("bill", "life", "anniversary"):
             r_type = "bill" if any(k in title for k in LIABILITY_KEYWORDS) else "life"
+        from services.reminder_service import (
+            detect_repeat_from_text,
+            infer_linked_asset_name,
+            normalize_repeat,
+        )
+
+        repeat = normalize_repeat(data.get("repeat"))
+        if repeat == "none":
+            repeat = detect_repeat_from_text(source_text + " " + title + " " + str(data.get("note") or ""))
+        linked = (data.get("linked_asset_name") or "").strip()[:32]
+        if not linked and r_type == "bill":
+            linked = infer_linked_asset_name(title, str(data.get("note") or "") + source_text)
         return {
             "intent": "reminder",
             "data": {
@@ -741,6 +763,8 @@ def _normalize_one_action(intent: str, data: dict, source_text: str) -> dict | N
                 "due_at": due_at,
                 "type": r_type,
                 "note": (data.get("note") or "")[:200],
+                "repeat": repeat,
+                "linked_asset_name": linked,
             },
         }
     return None
@@ -1345,13 +1369,34 @@ def apply_reminder(user_id: int, data: dict) -> str:
     if r_type not in ("bill", "life", "anniversary"):
         r_type = "life"
     note = (data.get("note") or "").strip()[:200]
+    from services.reminder_service import (
+        detect_repeat_from_text,
+        infer_linked_asset_name,
+        normalize_repeat,
+    )
+
+    repeat = normalize_repeat(data.get("repeat"))
+    if repeat == "none":
+        repeat = detect_repeat_from_text(f"{title} {note}")
+    linked = (data.get("linked_asset_name") or "").strip()[:32]
+    if not linked and r_type == "bill":
+        linked = infer_linked_asset_name(title, note)
     reminder = Reminder(
         user_id=user_id,
         title=title,
         due_at=due_at,
         type=r_type,
         note=note,
+        repeat=repeat,
+        linked_asset_name=linked,
     )
     db.session.add(reminder)
     db.session.commit()
-    return f"已添加提醒：{title}"
+    extra = ""
+    if repeat == "monthly":
+        extra = "（每月循环）"
+    elif repeat == "weekly":
+        extra = "（每周循环）"
+    if linked:
+        extra += f"，关联账户「{linked}」"
+    return f"已添加提醒：{title}{extra}"

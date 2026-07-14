@@ -10,6 +10,10 @@ export type DueReminder = {
   type?: string;
   note?: string;
   done?: boolean;
+  repeat?: string;
+  linked_asset_name?: string;
+  linked_balance?: number | null;
+  debt_summary?: string;
 };
 
 type NotifiedMap = Record<string, string>; // id -> due_at
@@ -71,7 +75,12 @@ const TYPE_LABEL: Record<string, string> = {
   anniversary: "纪念日",
 };
 
-/** 对已到期且未完成的提醒弹窗；同一 due_at 只弹一次。 */
+const REPEAT_LABEL: Record<string, string> = {
+  monthly: "每月",
+  weekly: "每周",
+};
+
+/** 对已到期且未完成的提醒弹窗；同一 due_at 只弹一次；附带欠款快照。 */
 export function notifyDueReminders(items: DueReminder[]): number {
   if (!isBrowserNotifyEnabled()) return 0;
   if (!isNotifySupported() || Notification.permission !== "granted") return 0;
@@ -90,8 +99,10 @@ export function notifyDueReminders(items: DueReminder[]): number {
     if (map[key] === dueKey) continue;
 
     const typeLabel = TYPE_LABEL[r.type || "life"] || "提醒";
+    const cycle = REPEAT_LABEL[r.repeat || ""] || "";
     const body = [
-      `${typeLabel} · ${new Date(r.due_at).toLocaleString("zh-CN")}`,
+      `${typeLabel}${cycle ? ` · ${cycle}` : ""} · ${new Date(r.due_at).toLocaleString("zh-CN")}`,
+      r.debt_summary || "",
       r.note || "",
     ]
       .filter(Boolean)
@@ -99,7 +110,7 @@ export function notifyDueReminders(items: DueReminder[]): number {
 
     showBrowserNotification(`Vita：${r.title}`, {
       body,
-      tag: `vita-reminder-${r.id}`,
+      tag: `vita-reminder-${r.id}-${dueKey}`,
       requireInteraction: false,
     });
 

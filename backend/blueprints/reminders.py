@@ -6,6 +6,13 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from models import Reminder
 from errors import ApiError
+from services.reminder_service import (
+    VALID_REPEAT,
+    advance_recurring_reminder,
+    infer_linked_asset_name,
+    normalize_repeat,
+    reminder_to_dict,
+)
 
 reminders_bp = Blueprint("reminders", __name__, url_prefix="/api")
 
@@ -56,15 +63,53 @@ def _validate_note(value):
     return note
 
 
+def _validate_repeat(value):
+    rep = normalize_repeat(value)
+    if (value or "none").strip() and rep == "none" and (value or "").strip().lower() not in ("", "none"):
+        raise ApiError("invalid_repeat", "repeat 必须是 none/monthly/weekly", 400, "repeat")
+    return rep
+
+
+def _validate_linked_asset(value):
+    name = (value or "").strip()
+    if len(name) > 32:
+        raise ApiError("invalid_linked_asset", "关联账户名不超过32位", 400, "linked_asset_name")
+    return name
+
+
 @reminders_bp.get("/reminders")
 @jwt_required()
 def list_reminders():
+    with_debt = (request.args.get("with_debt") or "").lower() in ("1", "true", "yes")
     items = (
         Reminder.query.filter_by(user_id=_uid())
         .order_by(Reminder.due_at.asc())
         .all()
     )
-    return jsonify([r.to_dict() for r in items]), 200
+    return jsonify([reminder_to_dict(r, with_debt=with_debt) for r in items]), 200
+
+
+@reminders_bp.get("/reminders/due-check")
+@jwt_required()
+def due_check():
+    """到期提醒 + 关联欠款快照（浏览器弹窗 / 主动检查用）。"""
+    now = datetime.now()
+    items = (
+        Reminder.query.filter(
+            Reminder.user_id == _uid(),
+            Reminder.done.is_(False),
+            Reminder.due_at <= now,
+        )
+        .order_by(Reminder.due_at.asc())
+        .limit(50)
+        .all()
+    )
+    return jsonify(
+        {
+            "checked_at": now.isoformat(),
+            "items": [reminder_to_dict(r, with_debt=True) for r in items],
+        }
+    ), 200
 
 
 @reminders_bp.post("/reminders")
@@ -75,6 +120,10 @@ def create_reminder():
     due_at = _parse_due(data.get("due_at"))
     r_type = _validate_type(data.get("type") or "life")
     note = _validate_note(data.get("note"))
+    repeat = _validate_repeat(data.get("repeat"))
+    linked = _validate_linked_asset(data.get("linked_asset_name"))
+    if not linked and r_type == "bill":
+        linked = infer_linked_asset_name(title, note)
     reminder = Reminder(
         user_id=_uid(),
         title=title,
@@ -82,10 +131,12 @@ def create_reminder():
         type=r_type,
         note=note,
         done=False,
+        repeat=repeat,
+        linked_asset_name=linked,
     )
     db.session.add(reminder)
     db.session.commit()
-    return jsonify(reminder.to_dict()), 201
+    return jsonify(reminder_to_dict(reminder, with_debt=True)), 201
 
 
 @reminders_bp.patch("/reminders/<int:reminder_id>")
@@ -95,19 +146,32 @@ def update_reminder(reminder_id):
     if not reminder:
         raise ApiError("not_found", "提醒不存在", 404)
     data = request.get_json(silent=True) or {}
+    advancing = False
     if "done" in data:
-        reminder.done = bool(data["done"])
+        want_done = bool(data["done"])
+        if want_done and normalize_repeat(reminder.repeat) != "none":
+            # 周期提醒：完成本期 → 推到下一期，保持未完成
+            advancing = advance_recurring_reminder(reminder)
+        else:
+            reminder.done = want_done
     if "title" in data:
         reminder.title = _validate_title(data.get("title"))
     if "due_at" in data:
         reminder.due_at = _parse_due(data.get("due_at"))
-        reminder.notified_at = None  # 改期后允许再次推送
+        reminder.notified_at = None
     if "type" in data:
         reminder.type = _validate_type(data.get("type"))
     if "note" in data:
         reminder.note = _validate_note(data.get("note"))
+    if "repeat" in data:
+        reminder.repeat = _validate_repeat(data.get("repeat"))
+    if "linked_asset_name" in data:
+        reminder.linked_asset_name = _validate_linked_asset(data.get("linked_asset_name"))
     db.session.commit()
-    return jsonify(reminder.to_dict()), 200
+    body = reminder_to_dict(reminder, with_debt=True)
+    if advancing:
+        body["advanced"] = True
+    return jsonify(body), 200
 
 
 @reminders_bp.delete("/reminders/<int:reminder_id>")

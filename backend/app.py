@@ -68,6 +68,8 @@ def _ensure_schema():
     stmts = [
         "ALTER TABLE assets ADD COLUMN kind VARCHAR(16) DEFAULT 'asset'",
         "ALTER TABLE reminders ADD COLUMN notified_at DATETIME",
+        "ALTER TABLE reminders ADD COLUMN repeat VARCHAR(16) DEFAULT 'none'",
+        "ALTER TABLE reminders ADD COLUMN linked_asset_name VARCHAR(32) DEFAULT ''",
     ]
     with db.engine.begin() as conn:
         for sql in stmts:
