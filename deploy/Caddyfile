@@ -1,5 +1,5 @@
 :80 {
-	encode_gzip
+	encode gzip
 
 	handle /api* {
 		reverse_proxy backend:5000
