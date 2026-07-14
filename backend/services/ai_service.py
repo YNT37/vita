@@ -309,56 +309,105 @@ def _looks_like_balance(text: str) -> bool:
         )
     )
 
-def _looks_like_finance_report(text: str) -> bool:
-    """是否像一次汇报多账户/多负债。"""
-    text = _normalize_finance_text(text)
-    money_hits = re.findall(r"\d+(?:\.\d{1,2})?", text)
-    name_hits = sum(1 for kw in ASSET_KEYWORDS if kw in text)
-    if "银行" in text:
-        name_hits += 1
-    return len(money_hits) >= 2 and name_hits >= 2
+def _parse_cn_amount(token: str) -> float | None:
+    """把「300」「三百」「一千二」等转成数字。"""
+    s = (token or "").strip().replace(",", "").replace("两", "二")
+    if not s:
+        return None
+    if re.fullmatch(r"\d+(?:\.\d{1,2})?", s):
+        return float(s)
+    digits = {
+        "零": 0, "〇": 0, "一": 1, "二": 2, "三": 3, "四": 4,
+        "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
+    }
+    if s in digits:
+        return float(digits[s])
+    # 仅支持常见口语：百/千/万组合，如 三百、一千五、两千零三十
+    total = 0
+    num = 0
+    units = {"十": 10, "百": 100, "千": 1000, "万": 10000}
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch in digits:
+            num = digits[ch]
+            i += 1
+            continue
+        if ch in units:
+            unit = units[ch]
+            if num == 0 and unit == 10:
+                num = 1  # 「十二」
+            total += num * unit
+            num = 0
+            i += 1
+            continue
+        return None
+    total += num
+    return float(total) if total > 0 else None
+
+
+def _amount_token_re() -> str:
+    return r"(?:\d+(?:\.\d{1,2})?|[一二三四五六七八九十百千万两零〇]+)"
+
 
 def _looks_like_sync_request(text: str) -> bool:
     return bool(
         re.search(
-            r"同步|重新录入|重新记|需要|记下来|写入|帮我记|录入|补上|记入|再记|保存资产|记录账户",
+            r"同步|重新录入|重新记|需要|记下来|写入|帮我记|录入|补上|记入|再记|"
+            r"保存资产|记录账户|设置(?:当前)?(?:账户)?资产|资产信息",
             text or "",
         )
     )
+
+
+def _looks_like_finance_report(text: str) -> bool:
+    """是否像一次汇报多账户/多负债。"""
+    text = _normalize_finance_text(text)
+    money_hits = re.findall(r"\d+(?:\.\d{1,2})?", text)
+    money_hits += re.findall(r"[一二三四五六七八九十百千万两零〇]+元?", text)
+    # 过滤误伤的纯「一」「二」等过短字
+    money_hits = [m for m in money_hits if not re.fullmatch(r"[一二三四五六七八九]", m)]
+    name_hits = sum(1 for kw in ASSET_KEYWORDS if kw in text)
+    if "银行" in text or "建设银行" in text or "工商银行" in text:
+        name_hits += 1
+    return len(money_hits) >= 2 and name_hits >= 2
+
 
 def _regex_extract_debts(text: str) -> list[dict]:
     """花呗/白条等：同时产出负债账户(balance) + 还款提醒(reminder)。"""
     text = _normalize_finance_text(text)
     actions: list[dict] = []
     seen: set[str] = set()
+    amt = _amount_token_re()
 
     debt_pat = re.compile(
         r"(花呗|京东白条|白条|借呗|信用卡)"
         r"(?:\s*(?:的)?(?:欠款|欠费|欠|待还|应还|账单))?"
         r"\s*(?:为|是|：|:)?\s*"
-        r"(\d+(?:\.\d{1,2})?)\s*元?"
+        rf"({amt})\s*元?"
     )
     for m in debt_pat.finditer(text):
         name, amount_s = m.group(1), m.group(2)
-        if name == "白条" and "京东白条" in text[max(0, m.start() - 2) : m.end()]:
-            # 避免「京东白条」再被「白条」匹配一次；京东白条由完整词匹配
-            if text[max(0, m.start() - 2) : m.start()] == "京东":
-                continue
-        amount = float(amount_s)
-        # 还款日窗口：本命后到下一条负债名之前
-        window = text[m.end() : m.end() + 80]
+        if name == "白条" and text[max(0, m.start() - 2) : m.start()] == "京东":
+            continue
+        amount = _parse_cn_amount(amount_s)
+        if amount is None or amount < 0:
+            continue
+        window = text[m.end() : m.end() + 100]
         cut = re.search(r"花呗|京东白条|白条|借呗|信用卡", window)
         if cut:
             window = window[: cut.start()]
-        # 也扫匹配段之前一点（「七月二十五还花呗800」少见，主要靠后面）
-        due_src = window if re.search(r"月|日|号|\d+\.\d+", window) else (window + " " + text)
+        # 还款日可在整句任意处（「花呗欠三百，……每个月28号还款」）
+        due_src = window + " " + text
         due = _parse_cn_due(due_src)
         installment = re.search(
-            r"(?:每期|每个月还|每月还|分\s*\d+\s*期)\s*(?:还)?\s*(\d+(?:\.\d{1,2})?)",
-            window,
+            rf"(?:每期|每个月还|每月还|分\s*\d+\s*期)\s*(?:还)?\s*({amt})",
+            window + " " + text,
         )
-        pay = float(installment.group(1)) if installment else amount
-        title = f"还{name} {pay:g}元" if installment else f"还{name} {amount:g}元"
+        pay = _parse_cn_amount(installment.group(1)) if installment else amount
+        if pay is None:
+            pay = amount
+        title = f"还{name} {pay:g}元"
         actions.append(
             {
                 "intent": "reminder",
@@ -384,6 +433,60 @@ def _regex_extract_debts(text: str) -> list[dict]:
                     },
                 }
             )
+
+    # 「花呗每个月28号还款提醒」——金额已在上文或暂无金额也要出提醒卡
+    monthly = re.search(
+        r"(?:每个月|每月)(?:的)?\s*(\d{1,2})[日号].{0,20}(?:还|还款|提醒)|"
+        r"(?:还|还款|提醒).{0,20}(?:每个月|每月)(?:的)?\s*(\d{1,2})[日号]",
+        text,
+    )
+    if monthly and re.search(r"花呗|白条|借呗|信用卡", text):
+        day = int(monthly.group(1) or monthly.group(2))
+        due = _parse_cn_due(f"每月{day}号")
+        for name in ("花呗", "京东白条", "白条", "借呗", "信用卡"):
+            if name == "白条" and "京东白条" in text:
+                continue
+            if name not in text:
+                continue
+            # 已有同名提醒则只修正 due
+            existing = next(
+                (
+                    a
+                    for a in actions
+                    if a.get("intent") == "reminder"
+                    and name in str((a.get("data") or {}).get("title") or "")
+                ),
+                None,
+            )
+            if existing:
+                existing["data"]["due_at"] = due
+                note = str(existing["data"].get("note") or "")
+                if "每月" not in note:
+                    existing["data"]["note"] = (note + f"；每月{day}号").strip("；")[:200]
+            else:
+                bal = next(
+                    (
+                        (a.get("data") or {}).get("balance")
+                        for a in actions
+                        if a.get("intent") == "balance"
+                        and (a.get("data") or {}).get("name") == name
+                    ),
+                    None,
+                )
+                title = f"还{name}" + (f" {float(bal):g}元" if bal is not None else "")
+                actions.append(
+                    {
+                        "intent": "reminder",
+                        "data": {
+                            "title": title[:120],
+                            "due_at": due,
+                            "type": "bill",
+                            "note": f"每月{day}号还款",
+                        },
+                    }
+                )
+            break
+
     return actions
 
 
@@ -397,13 +500,14 @@ def _regex_extract_batch(text: str) -> list[dict]:
         if a.get("intent") == "balance"
     }
 
-    # 账户名 + 金额
+    # 账户名 + 金额（支持「三百」）
+    amt = _amount_token_re()
     asset_pat = re.compile(
         r"(基金|余额宝|股票|微信|支付宝|建行|工行|招行|农行|中行|交行|现金|理财|"
         r"银行卡|储蓄卡)"
         r"(?:的)?(?:余额|账户|卡)?"
         r"(?:为|是|剩|还有|：|:|)?\s*"
-        r"(\d+(?:\.\d{1,2})?)\s*元?"
+        rf"({amt})\s*元?"
     )
     for m in asset_pat.finditer(text):
         name, amount_s = m.group(1), m.group(2)
@@ -411,13 +515,16 @@ def _regex_extract_batch(text: str) -> list[dict]:
             continue
         if name in seen_assets:
             continue
+        amount = _parse_cn_amount(amount_s)
+        if amount is None:
+            continue
         seen_assets.add(name)
         actions.append(
             {
                 "intent": "balance",
                 "data": {
                     "name": name[:32],
-                    "balance": float(amount_s),
+                    "balance": amount,
                     "kind": "asset",
                     "note": text[:200],
                 },
@@ -935,9 +1042,11 @@ def generate_chat_reply(
         parts.append(f"【系统已执行】{action_note}")
     elif pending_count > 0:
         parts.append(
-            f"【待用户确认】已识别 {pending_count} 项待写入，"
-            "界面会弹出可编辑确认卡片；尚未写入数据库。"
-            "请用角色语气请用户核对卡片后点确定，不要声称已经记入。"
+            f"【待用户确认】已识别 {pending_count} 项待写入（含账户余额与还款提醒），"
+            "界面已弹出可编辑确认卡片；尚未写入数据库。"
+            "请用角色语气请用户核对下方卡片后点确定。"
+            "禁止说「系统没有提醒功能」「等以后再添」——提醒卡已经生成。"
+            "禁止说某项「还没入库」除非该项没有对应卡片。"
         )
     else:
         parts.append("【系统已执行】无（本次未写入数据库）")
@@ -947,11 +1056,50 @@ def generate_chat_reply(
         if content:
             parts.append(f"{role}: {content}")
     parts.append(f"user: {message}")
+    # 有确认卡时优先用稳妥模板，避免模型胡编「没有提醒功能」
+    if pending_count > 0:
+        ask = {
+            "butler": (
+                f"好的，我整理了 {pending_count} 项（账户余额/负债和还款提醒都在下面的卡片里）。"
+                "请逐张核对，点确定后才会写入；写好后可在统计页和提醒页查看。"
+            ),
+            "servant": (
+                f"嗻！奴才拟了 {pending_count} 条草稿，含账户与还款提醒，都在下方卡片。"
+                "主子填妥点确定，奴才这才记入账册；统计页、提醒页均可过目。"
+            ),
+            "sassy": (
+                f"听懂了，{pending_count} 张卡在下面——余额和还款提醒都有。"
+                "你自己核对点确定，别事后说我没提醒你。"
+            ),
+            "lover": (
+                f"我听明白啦，下面有 {pending_count} 张确认卡（含还款提醒），"
+                "你改好再点确定就好～写入后统计页和提醒页都能看到。"
+            ),
+        }
+        # 仍可尝试 LLM，但若回复像在否认功能则回退模板
+        user_prompt = (
+            "以下是对话历史、用户数据与当前消息。请用角色语气自然回复。\n"
+            "硬性规则：必须请用户确认下方卡片；禁止声称没有提醒/记账功能；"
+            "禁止把未点确定的内容说成已入库。\n"
+            + "\n".join(parts)
+        )
+        provider, key, base, model = _ai_params(ai_config)
+        reply = _invoke_llm(system, user_prompt, provider, key, base, model)
+        bad = bool(
+            reply
+            and re.search(
+                r"没有.{0,8}(提醒|功能)|等系统|以后再|尚未支持|还没.{0,6}功能|添此等",
+                reply,
+            )
+        )
+        if reply and not bad:
+            return reply
+        return ask.get(persona, f"请确认下方 {pending_count} 项后再写入。")
+
     user_prompt = (
         "以下是对话历史、用户数据与当前消息。请用角色语气自然回复。\n"
         "硬性规则：涉及金额/账户/待办时，只能依据【用户当前数据】与【系统已执行】；"
         "禁止把聊天记录里未入库的数字当成已保存数据复述；"
-        "若出现【待用户确认】，明确说还没入库、请在卡片里核对后点确定；"
         "若数据为空且未执行写入，请明确说「尚未记入系统」，并引导用户再说一遍账户明细。\n"
         + "\n".join(parts)
     )
@@ -961,14 +1109,6 @@ def generate_chat_reply(
         return reply
     if query_answer:
         return query_answer
-    if pending_count > 0:
-        ask = {
-            "butler": f"我理解了 {pending_count} 项，请在下方卡片核对无误后再点确定哦。",
-            "servant": f"主子，奴才拟了 {pending_count} 条草稿，请过目确认后再写入账册。",
-            "sassy": f"听懂了，{pending_count} 条草稿在下面，你自己核对点确定，别事后赖我。",
-            "lover": f"我听明白啦，下面有 {pending_count} 张确认卡，你改好再点确定就好～",
-        }
-        return ask.get(persona, f"请确认下方 {pending_count} 项后再写入。")
     if action_note:
         ack = {
             "butler": f"好的，{action_note}。可在统计页查看。",
