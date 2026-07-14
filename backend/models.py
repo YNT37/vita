@@ -56,6 +56,7 @@ class Transaction(db.Model):
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     category = db.Column(db.String(32), nullable=False)
     note = db.Column(db.String(200), default="")
+    account = db.Column(db.String(32), default="")  # 付款/收款账户，删除时用于回滚余额
     date = db.Column(db.Date, nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -66,6 +67,7 @@ class Transaction(db.Model):
             "amount": float(self.amount),
             "category": self.category,
             "note": self.note or "",
+            "account": self.account or "",
             "date": self.date.isoformat(),
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

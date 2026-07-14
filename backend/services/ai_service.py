@@ -1477,6 +1477,7 @@ def apply_transaction(user_id: int, data: dict) -> str:
         amount=amount,
         category=category,
         note=note,
+        account=account,
         date=d,
     )
     db.session.add(txn)
@@ -1487,10 +1488,24 @@ def apply_transaction(user_id: int, data: dict) -> str:
     return base + account_note
 
 
+def resolve_transaction_account(txn) -> str:
+    """优先用流水上的 account，旧数据再从备注推断。"""
+    account = (getattr(txn, "account", None) or "").strip()[:32]
+    if account:
+        return account
+    note = getattr(txn, "note", None) or ""
+    return _extract_pay_account(note)
+
+
 def _adjust_account_for_transaction(
-    user_id: int, account: str, t_type: str, amount: Decimal
+    user_id: int,
+    account: str,
+    t_type: str,
+    amount: Decimal,
+    *,
+    reverse: bool = False,
 ) -> str:
-    """付款账户联动：负债账户增加欠款，资产账户扣减余额。"""
+    """付款账户联动：负债账户增加欠款，资产账户扣减余额。reverse=True 时冲正。"""
     name = (account or "").strip()[:32]
     if not name:
         return ""
@@ -1500,6 +1515,8 @@ def _adjust_account_for_transaction(
         delta = amount if is_liab else -amount
     else:
         delta = -amount if is_liab else amount
+    if reverse:
+        delta = -delta
 
     if asset:
         asset.balance = Decimal(str(asset.balance or 0)) + delta
@@ -1508,9 +1525,16 @@ def _adjust_account_for_transaction(
             if "负债" not in (asset.note or ""):
                 asset.note = (("负债欠款；" + (asset.note or "")).strip("；"))[:200]
         asset.updated_at = datetime.utcnow()
+        if reverse:
+            if is_liab:
+                return f"；已冲正，{name}欠款现为 {float(asset.balance):g} 元"
+            return f"；已冲正，{name}余额现为 {float(asset.balance):g} 元"
         if is_liab:
             return f"；{name}欠款现为 {float(asset.balance):g} 元"
         return f"；已从{name}扣除，余额现为 {float(asset.balance):g} 元"
+
+    if reverse:
+        return ""
 
     if is_liab:
         start = amount if t_type == "expense" else Decimal("0")

@@ -62,6 +62,7 @@ def create_transaction():
         amount=amount,
         category=category,
         note=note,
+        account=account,
         date=d,
     )
     db.session.add(txn)
@@ -94,6 +95,20 @@ def delete_transaction(txn_id):
     txn = Transaction.query.filter_by(id=txn_id, user_id=_uid()).first()
     if not txn:
         raise ApiError("not_found", "交易不存在", 404)
+    from services.ai_service import (
+        _adjust_account_for_transaction,
+        resolve_transaction_account,
+    )
+
+    account = resolve_transaction_account(txn)
+    if account:
+        _adjust_account_for_transaction(
+            _uid(),
+            account,
+            txn.type,
+            Decimal(str(txn.amount)),
+            reverse=True,
+        )
     db.session.delete(txn)
     db.session.commit()
     return jsonify({"ok": True}), 200

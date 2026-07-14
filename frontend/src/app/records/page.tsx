@@ -15,6 +15,7 @@ type Transaction = {
   amount: number;
   category: string;
   note: string;
+  account?: string;
   date: string;
 };
 
@@ -339,6 +340,11 @@ export default function RecordsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{item.category}</span>
+                    {item.account && (
+                      <span className="text-xs text-gray-500 shrink-0">
+                        {item.account}
+                      </span>
+                    )}
                     {item.note && (
                       <span className="text-sm text-gray-400 truncate">{item.note}</span>
                     )}
