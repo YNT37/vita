@@ -645,14 +645,14 @@ docs/部署/{README,环境变量,数据库,A–E,常见问题}.md
 
 ---
 
-### #33 · 2026-07-13 · Cursor(Grok) · 部署统一为 Docker 两种
-- 对应功能/文件：`docs/部署/本地-Docker.md`、`云服务器-Docker.md`；移除 venv 部署脚本与 A–E
+### #34 · 2026-07-14 · Cursor(Grok) · 花呗欠款同时出负债卡+还款提醒
+- 对应功能/文件：`backend/services/ai_service.py`、`ConfirmCard.tsx`
 - Prompt：
-  > 统一使用docker，只有本地部署和云部署两种
+  > ai还是有点问题l让他记入资产时，花呗欠款经常不弹窗，且没有设置提醒
 - AI 原始输出：
 
-```text
-仅保留本地 Docker / 云服务器 Docker；pull-and-up → compose
+```python
+# 规则强制：花呗/白条 → balance(kind=liability) + reminder；支持「七月25日」
 ```
 
 - 采纳情况：全部采纳。

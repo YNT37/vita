@@ -91,7 +91,12 @@ export function pendingToCard(action: PendingAction, id: string): ConfirmCardSta
     draft: {
       name: String(data.name ?? "资产"),
       balance: String(data.balance ?? ""),
-      kind: data.kind === "liability" ? "liability" : "asset",
+      kind:
+        data.kind === "liability" ||
+        /花呗|白条|借呗|信用卡|负债|欠款|贷款/.test(String(data.name ?? "")) ||
+        String(data.note ?? "").includes("负债")
+          ? "liability"
+          : "asset",
       note: String(data.note ?? ""),
     },
   };

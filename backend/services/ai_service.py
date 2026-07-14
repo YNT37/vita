@@ -47,14 +47,21 @@ UNDERSTAND_SYSTEM = """你是 Vita 生活管家的意图理解模块。根据用
 should_act：用户明确汇报账户余额、欠款、记账、要求记下 → true；只是询问 → false。
 
 data：
-- balance: {name, balance(number), note?}
+- balance: {name, balance(number), kind?: asset|liability, note?}
 - transaction: {type income|expense, amount, category, note?, date?}
 - reminder: {title, due_at ISO, type bill|life|anniversary, note?}
 - query: {topic assets|expense|income|reminders|overview}
 
+硬性规则：
+- 提到花呗/白条/借呗/信用卡欠款时，必须同时给出：① balance（kind=liability）② reminder（type=bill，含还款日）
+- 不能只记余额不建还款提醒；日期可用「七月25日」「7.25」「每月25号」等
+
 示例：
 用户：「基金1901.74，微信57.6，建行270.29，工行151.16；花呗707.69七月25日还，京东白条412.58分两期每期206.29二十七日还」
-→ batch，4 个 balance + 2 个 reminder(bill)
+→ batch，4 个 balance(asset) + 2 个 balance(liability) + 2 个 reminder(bill)
+
+用户：「花呗欠款800，七月25日还」
+→ batch：balance(花呗,800,liability) + reminder(还花呗 800元, due 本年7月25日)
 """
 
 def _normalize_provider(provider: str | None) -> str:
@@ -201,28 +208,60 @@ def _is_liability_name(name: str) -> bool:
     return any(k in (name or "") for k in LIABILITY_KEYWORDS)
 
 def _parse_cn_due(text: str, default_hour: int = 10) -> str:
-    """把「7月25日」「7.25」「25号还」等解析为今年 ISO 时间。"""
+    """把「7月25日」「七月25日」「7.25」「25号还」等解析为今年 ISO 时间。"""
     now = datetime.now()
     year = now.year
+    cn_month = {
+        "正": 1, "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6,
+        "七": 7, "八": 8, "九": 9, "十": 10, "十一": 11, "十二": 12,
+    }
+    cn_day = {
+        "一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7,
+        "八": 8, "九": 9, "十": 10, "十一": 11, "十二": 12, "十三": 13,
+        "十四": 14, "十五": 15, "十六": 16, "十七": 17, "十八": 18,
+        "十九": 19, "二十": 20, "廿": 20, "三十": 30,
+    }
+
+    def _finish(y: int, month: int, day: int) -> str | None:
+        try:
+            due = datetime(y, month, day, default_hour, 0)
+            if due.date() < now.date() and month < now.month:
+                due = datetime(y + 1, month, day, default_hour, 0)
+            elif due.date() < now.date():
+                # 同月已过的日期 → 下一年
+                due = datetime(y + 1, month, day, default_hour, 0)
+            return due.strftime("%Y-%m-%dT%H:%M")
+        except ValueError:
+            return None
+
     m = re.search(r"(?:(\d{4})年)?\s*(\d{1,2})月\s*(\d{1,2})[日号]?", text)
     if m:
-        y = int(m.group(1) or year)
-        month, day = int(m.group(2)), int(m.group(3))
-        try:
-            return datetime(y, month, day, default_hour, 0).strftime("%Y-%m-%dT%H:%M")
-        except ValueError:
-            pass
+        got = _finish(int(m.group(1) or year), int(m.group(2)), int(m.group(3)))
+        if got:
+            return got
+
+    m = re.search(
+        r"(?:(\d{4})年)?\s*(正|十一|十二|一|二|三|四|五|六|七|八|九|十)月\s*"
+        r"([一二三四五六七八九十廿\d]{1,3})[日号]?",
+        text,
+    )
+    if m:
+        month = cn_month.get(m.group(2), 0)
+        day_raw = m.group(3)
+        day = int(day_raw) if day_raw.isdigit() else cn_day.get(day_raw, 0)
+        if month and day:
+            got = _finish(int(m.group(1) or year), month, day)
+            if got:
+                return got
+
     m = re.search(r"(?<!\d)(\d{1,2})\.(\d{1,2})(?!\d)", text)
     if m:
         month, day = int(m.group(1)), int(m.group(2))
         if 1 <= month <= 12 and 1 <= day <= 31:
-            try:
-                due = datetime(year, month, day, default_hour, 0)
-                if due.date() < now.date() and month < now.month:
-                    due = datetime(year + 1, month, day, default_hour, 0)
-                return due.strftime("%Y-%m-%dT%H:%M")
-            except ValueError:
-                pass
+            got = _finish(year, month, day)
+            if got:
+                return got
+
     m = re.search(r"(?:每个月|每月|每月的)?\s*(\d{1,2})[日号]", text)
     if m:
         day = int(m.group(1))
@@ -237,6 +276,24 @@ def _parse_cn_due(text: str, default_hour: int = 10) -> str:
             return due.strftime("%Y-%m-%dT%H:%M")
         except ValueError:
             pass
+
+    # 「二十七日还」无月份 → 本月或下月该日
+    m = re.search(r"(二十[一二三四五六七八九]?|三十|廿[一二三四五六七八九]?|[一二三四五六七八九十]{1,3})日", text)
+    if m:
+        day = cn_day.get(m.group(1), 0)
+        if day:
+            month = now.month
+            try:
+                due = datetime(year, month, day, default_hour, 0)
+                if due.date() < now.date():
+                    if month == 12:
+                        due = datetime(year + 1, 1, day, default_hour, 0)
+                    else:
+                        due = datetime(year, month + 1, day, default_hour, 0)
+                return due.strftime("%Y-%m-%dT%H:%M")
+            except ValueError:
+                pass
+
     return (now + timedelta(days=1)).strftime("%Y-%m-%dT10:00")
 
 def _looks_like_balance(text: str) -> bool:
@@ -269,27 +326,35 @@ def _looks_like_sync_request(text: str) -> bool:
         )
     )
 
-def _regex_extract_batch(text: str) -> list[dict]:
-    """规则提取多账户余额 + 负债还款提醒。"""
+def _regex_extract_debts(text: str) -> list[dict]:
+    """花呗/白条等：同时产出负债账户(balance) + 还款提醒(reminder)。"""
     text = _normalize_finance_text(text)
     actions: list[dict] = []
-    seen_assets: set[str] = set()
+    seen: set[str] = set()
 
-    # 花呗/白条 + 金额 → reminder + 负债账户
     debt_pat = re.compile(
-        r"(花呗|京东白条|白条|借呗|信用卡)\s*(?:欠款|欠|待还|还)?\s*"
+        r"(花呗|京东白条|白条|借呗|信用卡)"
+        r"(?:\s*(?:的)?(?:欠款|欠费|欠|待还|应还|账单))?"
+        r"\s*(?:为|是|：|:)?\s*"
         r"(\d+(?:\.\d{1,2})?)\s*元?"
     )
     for m in debt_pat.finditer(text):
         name, amount_s = m.group(1), m.group(2)
+        if name == "白条" and "京东白条" in text[max(0, m.start() - 2) : m.end()]:
+            # 避免「京东白条」再被「白条」匹配一次；京东白条由完整词匹配
+            if text[max(0, m.start() - 2) : m.start()] == "京东":
+                continue
         amount = float(amount_s)
-        window = text[m.end() : m.end() + 56]
+        # 还款日窗口：本命后到下一条负债名之前
+        window = text[m.end() : m.end() + 80]
         cut = re.search(r"花呗|京东白条|白条|借呗|信用卡", window)
         if cut:
             window = window[: cut.start()]
-        due = _parse_cn_due(window)
+        # 也扫匹配段之前一点（「七月二十五还花呗800」少见，主要靠后面）
+        due_src = window if re.search(r"月|日|号|\d+\.\d+", window) else (window + " " + text)
+        due = _parse_cn_due(due_src)
         installment = re.search(
-            r"(?:每期|每个月还|每月还)\s*(\d+(?:\.\d{1,2})?)",
+            r"(?:每期|每个月还|每月还|分\s*\d+\s*期)\s*(?:还)?\s*(\d+(?:\.\d{1,2})?)",
             window,
         )
         pay = float(installment.group(1)) if installment else amount
@@ -301,18 +366,36 @@ def _regex_extract_batch(text: str) -> list[dict]:
                     "title": title[:120],
                     "due_at": due,
                     "type": "bill",
-                    "note": f"总额{amount:g}" + (f"；{window.strip()}" if window.strip() else ""),
+                    "note": f"总额{amount:g}"
+                    + (f"；{window.strip()[:80]}" if window.strip() else ""),
                 },
             }
         )
-        if name not in seen_assets:
-            seen_assets.add(name)
+        if name not in seen:
+            seen.add(name)
             actions.append(
                 {
                     "intent": "balance",
-                    "data": {"name": name, "balance": amount, "note": "负债欠款"},
+                    "data": {
+                        "name": name,
+                        "balance": amount,
+                        "kind": "liability",
+                        "note": "负债欠款",
+                    },
                 }
             )
+    return actions
+
+
+def _regex_extract_batch(text: str) -> list[dict]:
+    """规则提取多账户余额 + 负债还款提醒。"""
+    text = _normalize_finance_text(text)
+    actions: list[dict] = _regex_extract_debts(text)
+    seen_assets: set[str] = {
+        (a.get("data") or {}).get("name", "")
+        for a in actions
+        if a.get("intent") == "balance"
+    }
 
     # 账户名 + 金额
     asset_pat = re.compile(
@@ -332,11 +415,73 @@ def _regex_extract_batch(text: str) -> list[dict]:
         actions.append(
             {
                 "intent": "balance",
-                "data": {"name": name[:32], "balance": float(amount_s), "note": text[:200]},
+                "data": {
+                    "name": name[:32],
+                    "balance": float(amount_s),
+                    "kind": "asset",
+                    "note": text[:200],
+                },
             }
         )
 
     return actions
+
+
+def _enrich_actions_with_debts(text: str, actions: list[dict]) -> list[dict]:
+    """补上 LLM 漏掉的花呗/白条：负债余额 + 还款提醒。"""
+    debts = _regex_extract_debts(text)
+    if not debts:
+        # 仍给已有负债账户标 kind
+        out = []
+        for item in actions:
+            if item.get("intent") == "balance":
+                data = dict(item.get("data") or {})
+                if _is_liability_name(str(data.get("name") or "")):
+                    data["kind"] = "liability"
+                    if "负债" not in str(data.get("note") or ""):
+                        data["note"] = ("负债欠款；" + str(data.get("note") or "")).strip("；")[:200]
+                out.append({"intent": "balance", "data": data})
+            else:
+                out.append(item)
+        return out
+
+    out = list(actions)
+    bal_names = {
+        str((a.get("data") or {}).get("name") or "")
+        for a in out
+        if a.get("intent") == "balance"
+    }
+    rem_titles = " ".join(
+        str((a.get("data") or {}).get("title") or "")
+        for a in out
+        if a.get("intent") == "reminder"
+    )
+
+    for item in debts:
+        data = item.get("data") or {}
+        if item.get("intent") == "balance":
+            name = str(data.get("name") or "")
+            if name in bal_names:
+                for a in out:
+                    if a.get("intent") == "balance" and str((a.get("data") or {}).get("name")) == name:
+                        a["data"] = {**(a.get("data") or {}), "kind": "liability"}
+                        if data.get("balance") is not None and not (a.get("data") or {}).get("balance"):
+                            a["data"]["balance"] = data["balance"]
+                continue
+            out.append(item)
+            bal_names.add(name)
+        elif item.get("intent") == "reminder":
+            name = ""
+            for kw in ("花呗", "京东白条", "白条", "借呗", "信用卡"):
+                if kw in str(data.get("title") or ""):
+                    name = kw
+                    break
+            if name and name in rem_titles:
+                continue
+            out.append(item)
+            rem_titles += " " + str(data.get("title") or "")
+
+    return out
 
 def _looks_like_record(text: str) -> bool:
     return bool(
@@ -447,9 +592,12 @@ def _normalize_one_action(intent: str, data: dict, source_text: str) -> dict | N
         note = (data.get("note") or source_text)[:200]
         if _is_liability_name(name) and "负债" not in note:
             note = ("负债欠款；" + note).strip("；")[:200]
+        kind = (data.get("kind") or "").strip()
+        if kind not in ("asset", "liability"):
+            kind = "liability" if _is_liability_name(name) else "asset"
         return {
             "intent": "balance",
-            "data": {"name": name, "balance": balance, "note": note},
+            "data": {"name": name, "balance": balance, "kind": kind, "note": note},
         }
     if intent == "transaction":
         t_type = (data.get("type") or "expense").strip()
@@ -598,6 +746,34 @@ def _fallback_understand(message: str, context: dict | None) -> dict:
         }
     return {"intent": "chat", "should_act": False, "data": {}, "actions": [], "summary": ""}
 
+def _finalize_understanding(source: str, result: dict) -> dict:
+    """统一补全花呗/白条等负债动作，保证确认卡同时出现账户+提醒。"""
+    actions = list(result.get("actions") or [])
+    if result.get("should_act") and not actions:
+        intent = result.get("intent")
+        data = result.get("data") or {}
+        if intent in ("balance", "transaction", "reminder"):
+            actions = [{"intent": intent, "data": data}]
+    actions = _enrich_actions_with_debts(source, actions)
+    # 仅有负债规则命中时也要强制 should_act
+    if not actions:
+        return result
+    intent = result.get("intent") or "batch"
+    if len(actions) >= 2:
+        intent = "batch"
+    elif len(actions) == 1:
+        intent = actions[0]["intent"]
+    return {
+        **result,
+        "intent": intent,
+        "should_act": True,
+        "data": {} if intent == "batch" else (actions[0].get("data") or {}),
+        "actions": actions,
+        "summary": result.get("summary")
+        or (f"识别 {len(actions)} 项待确认" if len(actions) > 1 else result.get("summary") or ""),
+    }
+
+
 def understand_message(
     message: str,
     context: dict | None = None,
@@ -624,34 +800,65 @@ def understand_message(
             if money_lines:
                 source = "\n".join(money_lines[-3:])
 
+    # 含花呗/白条欠款：规则直接出账户+提醒，避免 LLM 只聊不落库
+    debt_actions = _regex_extract_debts(source)
+    if debt_actions and (
+        _looks_like_finance_report(source)
+        or _looks_like_sync_request(message)
+        or _looks_like_balance(source)
+        or len(debt_actions) >= 2
+    ):
+        # 多账户时合并资产规则
+        if _looks_like_finance_report(source):
+            actions = _regex_extract_batch(source)
+        else:
+            actions = debt_actions
+        if actions:
+            return _finalize_understanding(
+                source,
+                {
+                    "intent": "batch",
+                    "should_act": True,
+                    "data": {},
+                    "actions": actions,
+                    "summary": f"批量记录 {len(actions)} 项财务信息",
+                },
+            )
+
     # 多账户汇报：规则优先，避免 LLM 只闲聊不落库
     if _looks_like_finance_report(source):
         actions = _regex_extract_batch(source)
         if len(actions) >= 2:
-            return {
-                "intent": "batch",
-                "should_act": True,
-                "data": {},
-                "actions": actions,
-                "summary": f"批量记录 {len(actions)} 项财务信息",
-            }
+            return _finalize_understanding(
+                source,
+                {
+                    "intent": "batch",
+                    "should_act": True,
+                    "data": {},
+                    "actions": actions,
+                    "summary": f"批量记录 {len(actions)} 项财务信息",
+                },
+            )
 
     result = _llm_understand(message, context, ai_config)
     if result and result.get("intent") != "unknown":
         if result["intent"] in ("chat", "query") and (
-            _looks_like_balance(source) or _looks_like_finance_report(source)
+            _looks_like_balance(source) or _looks_like_finance_report(source) or debt_actions
         ):
-            actions = _regex_extract_batch(source)
+            actions = _regex_extract_batch(source) or debt_actions
             if actions:
-                return {
-                    "intent": "batch" if len(actions) > 1 else actions[0]["intent"],
-                    "should_act": True,
-                    "data": {} if len(actions) > 1 else actions[0]["data"],
-                    "actions": actions,
-                    "summary": "纠正为财务写入",
-                }
-        return result
-    return _fallback_understand(source, context)
+                return _finalize_understanding(
+                    source,
+                    {
+                        "intent": "batch" if len(actions) > 1 else actions[0]["intent"],
+                        "should_act": True,
+                        "data": {} if len(actions) > 1 else actions[0]["data"],
+                        "actions": actions,
+                        "summary": "纠正为财务写入",
+                    },
+                )
+        return _finalize_understanding(source, result)
+    return _finalize_understanding(source, _fallback_understand(source, context))
 
 def execute_intent(user_id: int, understanding: dict) -> str | None:
     actions = understanding.get("actions") or []
@@ -827,20 +1034,28 @@ def _regex_parse_balance(text: str) -> dict | None:
 def _regex_parse(text: str) -> dict:
     text = text.strip()
     today = date.today().isoformat()
+    # 花呗/白条优先：不能只走余额而丢掉还款提醒
+    debts = _regex_extract_debts(text)
+    if debts:
+        if len(debts) == 1:
+            return {"intent": debts[0]["intent"], "data": debts[0].get("data") or {}}
+        return {
+            "intent": "batch",
+            "data": {},
+            "actions": debts,
+        }
     balance = _regex_parse_balance(text)
     if balance:
         return balance
-    if re.search(r"提醒|记得|别忘了|到期", text) and not re.search(r"多少|多少钱", text):
-        due = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%dT10:00")
-        if "今天" in text or "今日" in text:
-            due = datetime.now().strftime("%Y-%m-%dT18:00")
+    if re.search(r"提醒|记得|别忘了|到期|还款", text) and not re.search(r"多少|多少钱", text):
+        due = _parse_cn_due(text)
         title = re.sub(r"提醒我|记得|别忘了", "", text).strip() or text
         return {
             "intent": "reminder",
             "data": {
                 "title": title[:120],
                 "due_at": due,
-                "type": "bill" if re.search(r"花呗|账单|还款|房租", text) else "life",
+                "type": "bill" if re.search(r"花呗|账单|还款|房租|白条", text) else "life",
                 "note": "",
             },
         }
