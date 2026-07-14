@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useAutoReload, useDataRefresh } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
@@ -53,19 +53,45 @@ function formatMoney(n: number): string {
   return n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function parseType(raw: string | null): TxnType | "" {
+  if (raw === "income" || raw === "expense") return raw;
+  return "";
+}
+
 export default function RecordsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex-1 grid place-items-center text-gray-500">加载中…</main>
+      }
+    >
+      <RecordsPageInner />
+    </Suspense>
+  );
+}
+
+function RecordsPageInner() {
   const { user, loading: authLoading } = useAuth();
   const { bump } = useDataRefresh();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [month, setMonth] = useState(currentMonth);
+  const initialMonth = searchParams.get("month") || currentMonth();
+  const initialType = parseType(searchParams.get("type"));
+  const initialAccount = (searchParams.get("account") || "").trim();
+  const initialCategory = (searchParams.get("category") || "").trim();
+
+  const [month, setMonth] = useState(initialMonth);
+  const [filterType, setFilterType] = useState<TxnType | "">(initialType);
+  const [filterAccount, setFilterAccount] = useState(initialAccount);
+  const [filterCategory, setFilterCategory] = useState(initialCategory);
   const [items, setItems] = useState<Transaction[]>([]);
   const [stats, setStats] = useState<StatsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const [type, setType] = useState<TxnType>("expense");
+  const [type, setType] = useState<TxnType>(initialType || "expense");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("餐饮");
   const [categories, setCategories] = useState<string[]>([]);
@@ -76,12 +102,30 @@ export default function RecordsPage() {
     if (!authLoading && !user) router.replace("/login");
   }, [authLoading, user, router]);
 
+  // URL → 筛选状态（从统计中心跳转时）
+  useEffect(() => {
+    const m = searchParams.get("month");
+    if (m) setMonth(m);
+    setFilterType(parseType(searchParams.get("type")));
+    setFilterAccount((searchParams.get("account") || "").trim());
+    setFilterCategory((searchParams.get("category") || "").trim());
+  }, [searchParams]);
+
+  const listQuery = useMemo(() => {
+    const q = new URLSearchParams();
+    if (month) q.set("month", month);
+    if (filterType) q.set("type", filterType);
+    if (filterAccount) q.set("account", filterAccount);
+    if (filterCategory) q.set("category", filterCategory);
+    return q.toString();
+  }, [month, filterType, filterAccount, filterCategory]);
+
   const load = useCallback(async () => {
     setError("");
     setLoading(true);
     try {
       const [list, summary] = await Promise.all([
-        apiFetch<Transaction[]>(`/api/transactions?month=${month}`),
+        apiFetch<Transaction[]>(`/api/transactions?${listQuery}`),
         apiFetch<StatsSummary>(`/api/stats/summary?month=${month}`),
       ]);
       setItems(list);
@@ -91,7 +135,7 @@ export default function RecordsPage() {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [listQuery, month]);
 
   useAutoReload(load, !!user);
 
@@ -105,6 +149,32 @@ export default function RecordsPage() {
       })
       .catch(() => setCategories(QUICK_CATEGORIES));
   }, [user, type]);
+
+  function syncUrl(next: {
+    month?: string;
+    type?: TxnType | "";
+    account?: string;
+    category?: string;
+  }) {
+    const q = new URLSearchParams();
+    const m = next.month ?? month;
+    const t = next.type !== undefined ? next.type : filterType;
+    const a = next.account !== undefined ? next.account : filterAccount;
+    const c = next.category !== undefined ? next.category : filterCategory;
+    if (m) q.set("month", m);
+    if (t) q.set("type", t);
+    if (a) q.set("account", a);
+    if (c) q.set("category", c);
+    const qs = q.toString();
+    router.replace(qs ? `/records?${qs}` : "/records");
+  }
+
+  function clearFilters() {
+    setFilterType("");
+    setFilterAccount("");
+    setFilterCategory("");
+    syncUrl({ type: "", account: "", category: "" });
+  }
 
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -132,6 +202,7 @@ export default function RecordsPage() {
           category: category.trim(),
           note: note.trim(),
           date,
+          ...(filterAccount ? { account: filterAccount } : {}),
         },
       });
       setAmount("");
@@ -163,6 +234,16 @@ export default function RecordsPage() {
   }
 
   const balance = (stats?.income ?? 0) - (stats?.expense ?? 0);
+  const hasFilters = Boolean(filterType || filterAccount || filterCategory);
+
+  const listTitle = [
+    filterAccount ? `账户「${filterAccount}」` : null,
+    filterType ? TYPE_LABELS[filterType] : null,
+    filterCategory ? `分类「${filterCategory}」` : null,
+    "交易记录",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <PageContainer wide>
@@ -170,27 +251,87 @@ export default function RecordsPage() {
         <h1 className="text-xl sm:text-2xl font-semibold">记账理财</h1>
         <p className="text-sm text-gray-500">
           记一笔收支流水。账户余额/负债请到{" "}
-          <a href="/stats" className="text-blue-600 hover:underline">
-            统计 → 资产
+          <a href="/stats?tab=assets" className="text-blue-600 hover:underline">
+            统计 → 账户
           </a>{" "}
           查看。
         </p>
       </header>
 
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <label className="text-sm text-gray-500">查看月份</label>
         <input
           type="month"
           className="rounded-lg border border-black/15 dark:border-white/20 bg-transparent px-3 py-1.5 text-sm outline-none focus:border-blue-500"
           value={month}
-          onChange={(e) => setMonth(e.target.value)}
+          onChange={(e) => {
+            setMonth(e.target.value);
+            syncUrl({ month: e.target.value });
+          }}
         />
+        <select
+          className="rounded-lg border border-black/15 dark:border-white/20 bg-transparent px-3 py-1.5 text-sm outline-none focus:border-blue-500"
+          value={filterType}
+          onChange={(e) => {
+            const v = parseType(e.target.value);
+            setFilterType(v);
+            syncUrl({ type: v });
+          }}
+        >
+          <option value="">全部类型</option>
+          <option value="income">收入</option>
+          <option value="expense">支出</option>
+        </select>
       </div>
 
-      {stats && (
+      {hasFilters && (
+        <div className="flex flex-wrap items-center gap-2 mb-4 text-sm">
+          <span className="text-gray-500">当前筛选：</span>
+          {filterAccount && (
+            <span className="rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 px-2.5 py-0.5">
+              账户 {filterAccount}
+            </span>
+          )}
+          {filterType && (
+            <span className="rounded-full bg-gray-100 dark:bg-white/10 px-2.5 py-0.5">
+              {TYPE_LABELS[filterType]}
+            </span>
+          )}
+          {filterCategory && (
+            <span className="rounded-full bg-gray-100 dark:bg-white/10 px-2.5 py-0.5">
+              {filterCategory}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="text-blue-600 hover:underline"
+          >
+            清除筛选
+          </button>
+        </div>
+      )}
+
+      {stats && !hasFilters && (
         <section className="grid gap-3 grid-cols-2 sm:grid-cols-3 mb-6">
-          <StatCard label="本月收入" value={formatMoney(stats.income)} color="text-green-600" />
-          <StatCard label="本月支出" value={formatMoney(stats.expense)} color="text-red-500" />
+          <StatCard
+            label="本月收入"
+            value={formatMoney(stats.income)}
+            color="text-green-600"
+            onClick={() => {
+              setFilterType("income");
+              syncUrl({ type: "income" });
+            }}
+          />
+          <StatCard
+            label="本月支出"
+            value={formatMoney(stats.expense)}
+            color="text-red-500"
+            onClick={() => {
+              setFilterType("expense");
+              syncUrl({ type: "expense" });
+            }}
+          />
           <StatCard
             label="结余"
             value={formatMoney(balance)}
@@ -199,20 +340,30 @@ export default function RecordsPage() {
         </section>
       )}
 
-      {stats && stats.byCategory.length > 0 && (
+      {stats && !hasFilters && stats.byCategory.length > 0 && (
         <section className="rounded-2xl border border-black/10 dark:border-white/15 p-4 mb-6">
           <h2 className="text-sm font-medium text-gray-500 mb-3">分类统计</h2>
           <ul className="space-y-2">
             {stats.byCategory.map((c) => (
-              <li key={`${c.category}-${c.type}`} className="flex justify-between text-sm">
-                <span>
-                  {c.category}
-                  <span className="text-gray-400 ml-2">{TYPE_LABELS[c.type]}</span>
-                </span>
-                <span className={c.type === "income" ? "text-green-600" : "text-red-500"}>
-                  {c.type === "income" ? "+" : "-"}
-                  {formatMoney(c.amount)}
-                </span>
+              <li key={`${c.category}-${c.type}`}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterType(c.type);
+                    setFilterCategory(c.category);
+                    syncUrl({ type: c.type, category: c.category });
+                  }}
+                  className="w-full flex justify-between text-sm rounded-lg px-1 py-0.5 hover:bg-black/5 dark:hover:bg-white/5 text-left"
+                >
+                  <span>
+                    {c.category}
+                    <span className="text-gray-400 ml-2">{TYPE_LABELS[c.type]}</span>
+                  </span>
+                  <span className={c.type === "income" ? "text-green-600" : "text-red-500"}>
+                    {c.type === "income" ? "+" : "-"}
+                    {formatMoney(c.amount)}
+                  </span>
+                </button>
               </li>
             ))}
           </ul>
@@ -297,6 +448,9 @@ export default function RecordsPage() {
               placeholder="例如：午饭"
             />
           </div>
+          {filterAccount && (
+            <p className="text-xs text-gray-500">将记入账户：{filterAccount}</p>
+          )}
           <button
             type="submit"
             disabled={submitting}
@@ -314,12 +468,12 @@ export default function RecordsPage() {
       )}
 
       <section>
-        <h2 className="font-medium mb-3">交易记录</h2>
+        <h2 className="font-medium mb-3">{listTitle}</h2>
         {loading ? (
           <p className="text-sm text-gray-500">加载中…</p>
         ) : items.length === 0 ? (
           <p className="text-sm text-gray-500 rounded-xl border border-dashed border-black/15 dark:border-white/20 p-6 text-center">
-            本月还没有记录，记一笔吧
+            {hasFilters ? "没有符合筛选条件的记录" : "本月还没有记录，记一笔吧"}
           </p>
         ) : (
           <ul className="space-y-2">
@@ -341,9 +495,16 @@ export default function RecordsPage() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{item.category}</span>
                     {item.account && (
-                      <span className="text-xs text-gray-500 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFilterAccount(item.account || "");
+                          syncUrl({ account: item.account || "" });
+                        }}
+                        className="text-xs text-blue-600 hover:underline shrink-0"
+                      >
                         {item.account}
-                      </span>
+                      </button>
                     )}
                     {item.note && (
                       <span className="text-sm text-gray-400 truncate">{item.note}</span>
@@ -379,13 +540,27 @@ function StatCard({
   label,
   value,
   color,
+  onClick,
 }: {
   label: string;
   value: string;
   color: string;
+  onClick?: () => void;
 }) {
+  const cls = `rounded-2xl border border-black/10 dark:border-white/15 p-4 text-left ${
+    onClick ? "hover:border-blue-400/60 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 cursor-pointer transition-colors" : ""
+  }`;
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={cls}>
+        <p className="text-xs text-gray-500 mb-1">{label}</p>
+        <p className={`text-xl font-semibold ${color}`}>¥{value}</p>
+        <p className="text-[11px] text-gray-400 mt-1">点击查看流水</p>
+      </button>
+    );
+  }
   return (
-    <div className="rounded-2xl border border-black/10 dark:border-white/15 p-4">
+    <div className={cls}>
       <p className="text-xs text-gray-500 mb-1">{label}</p>
       <p className={`text-xl font-semibold ${color}`}>¥{value}</p>
     </div>

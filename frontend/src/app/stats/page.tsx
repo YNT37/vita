@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { useAutoReload, useDataRefresh } from "@/lib/data-refresh";
 import { apiFetch, ApiError } from "@/lib/api";
@@ -81,11 +81,42 @@ const TABS: { id: Tab; label: string }[] = [
 const inputCls =
   "w-full rounded-lg border border-black/15 dark:border-white/20 bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-blue-500";
 
+function recordsHref(params: {
+  month?: string;
+  type?: TxnType;
+  account?: string;
+  category?: string;
+}) {
+  const q = new URLSearchParams();
+  if (params.month) q.set("month", params.month);
+  if (params.type) q.set("type", params.type);
+  if (params.account) q.set("account", params.account);
+  if (params.category) q.set("category", params.category);
+  const qs = q.toString();
+  return qs ? `/records?${qs}` : "/records";
+}
+
 export default function StatsPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex-1 grid place-items-center text-gray-500">加载中…</main>
+      }
+    >
+      <StatsPageInner />
+    </Suspense>
+  );
+}
+
+function StatsPageInner() {
   const { user, loading: authLoading } = useAuth();
   const { bump } = useDataRefresh();
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>("overview");
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = searchParams.get("tab");
+    return TABS.some((x) => x.id === t) ? (t as Tab) : "overview";
+  });
   const [month, setMonth] = useState(currentMonth);
   const [data, setData] = useState<OverviewData | null>(null);
   const [categoryRows, setCategoryRows] = useState<CategoryRow[]>([]);
@@ -134,6 +165,20 @@ export default function StatsPage() {
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
   }, [authLoading, user, router]);
+
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t && TABS.some((x) => x.id === t)) setTab(t as Tab);
+  }, [searchParams]);
+
+  function goTab(next: Tab) {
+    setTab(next);
+    const q = new URLSearchParams(searchParams.toString());
+    if (next === "overview") q.delete("tab");
+    else q.set("tab", next);
+    const qs = q.toString();
+    router.replace(qs ? `/stats?${qs}` : "/stats");
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -448,7 +493,7 @@ export default function StatsPage() {
           <button
             key={t.id}
             type="button"
-            onClick={() => setTab(t.id)}
+            onClick={() => goTab(t.id)}
             className={`shrink-0 rounded-lg px-3 py-1.5 text-sm border transition-colors ${
               tab === t.id
                 ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/30"
@@ -478,23 +523,48 @@ export default function StatsPage() {
           {tab === "overview" && (
             <div className="space-y-4">
               <section className="grid gap-3 grid-cols-2 sm:grid-cols-3">
-                <StatCard label="本月收入" value={data.stats.income} color="text-green-600" />
-                <StatCard label="本月支出" value={data.stats.expense} color="text-red-500" />
+                <StatCard
+                  label="本月收入"
+                  value={data.stats.income}
+                  color="text-green-600"
+                  href={recordsHref({ month, type: "income" })}
+                />
+                <StatCard
+                  label="本月支出"
+                  value={data.stats.expense}
+                  color="text-red-500"
+                  href={recordsHref({ month, type: "expense" })}
+                />
                 <StatCard
                   label="本月结余"
                   value={data.stats.balance}
                   color={data.stats.balance >= 0 ? "text-blue-600" : "text-red-500"}
                   className="col-span-2 sm:col-span-1"
+                  href={recordsHref({ month })}
                 />
               </section>
               <section className="grid gap-3 grid-cols-2 sm:grid-cols-3">
-                <StatCard label="资产合计" value={data.assets_total} color="text-blue-600" />
-                <StatCard label="负债合计" value={data.liabilities_total || 0} color="text-amber-600" />
+                <StatCard
+                  label="资产合计"
+                  value={data.assets_total}
+                  color="text-blue-600"
+                  onClick={() => goTab("assets")}
+                  hint="查看账户"
+                />
+                <StatCard
+                  label="负债合计"
+                  value={data.liabilities_total || 0}
+                  color="text-amber-600"
+                  onClick={() => goTab("assets")}
+                  hint="查看信用账户"
+                />
                 <StatCard
                   label="净资产"
                   value={data.net_worth ?? data.assets_total}
                   color="text-emerald-600"
                   className="col-span-2 sm:col-span-1"
+                  onClick={() => goTab("assets")}
+                  hint="查看账户"
                 />
               </section>
               {data.stats.byCategory.length > 0 && (
@@ -503,25 +573,39 @@ export default function StatsPage() {
                   <ul className="space-y-2">
                     {data.stats.byCategory.map((c) => (
                       <li key={`${c.category}-${c.type}`}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span>
-                            {c.category}
-                            <span className="text-gray-400 ml-1">
-                              {c.type === "income" ? "收入" : "支出"}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            router.push(
+                              recordsHref({
+                                month,
+                                type: c.type,
+                                category: c.category,
+                              })
+                            )
+                          }
+                          className="w-full text-left rounded-lg hover:bg-black/5 dark:hover:bg-white/5 px-1 py-0.5"
+                        >
+                          <div className="flex justify-between text-sm mb-1">
+                            <span>
+                              {c.category}
+                              <span className="text-gray-400 ml-1">
+                                {c.type === "income" ? "收入" : "支出"}
+                              </span>
                             </span>
-                          </span>
-                          <span className={c.type === "income" ? "text-green-600" : "text-red-500"}>
-                            ¥{formatMoney(c.amount)}
-                          </span>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              c.type === "income" ? "bg-green-500" : "bg-red-400"
-                            }`}
-                            style={{ width: `${Math.min(100, (c.amount / maxCat) * 100)}%` }}
-                          />
-                        </div>
+                            <span className={c.type === "income" ? "text-green-600" : "text-red-500"}>
+                              ¥{formatMoney(c.amount)}
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${
+                                c.type === "income" ? "bg-green-500" : "bg-red-400"
+                              }`}
+                              style={{ width: `${Math.min(100, (c.amount / maxCat) * 100)}%` }}
+                            />
+                          </div>
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -618,6 +702,9 @@ export default function StatsPage() {
                 onSave={saveAssetEdit}
                 onCancel={() => setEditingAssetId(null)}
                 onDelete={removeAsset}
+                onOpen={(a) =>
+                  router.push(recordsHref({ month, account: a.name }))
+                }
                 saving={saving}
               />
               <AssetEditableList
@@ -630,6 +717,9 @@ export default function StatsPage() {
                 onSave={saveAssetEdit}
                 onCancel={() => setEditingAssetId(null)}
                 onDelete={removeAsset}
+                onOpen={(a) =>
+                  router.push(recordsHref({ month, account: a.name }))
+                }
                 saving={saving}
                 liability
               />
@@ -932,6 +1022,7 @@ function AssetEditableList({
   onSave,
   onCancel,
   onDelete,
+  onOpen,
   saving,
   liability,
 }: {
@@ -958,6 +1049,7 @@ function AssetEditableList({
   onSave: (id: number) => void;
   onCancel: () => void;
   onDelete: (id: number) => void;
+  onOpen?: (a: AssetRow) => void;
   saving: boolean;
   liability?: boolean;
 }) {
@@ -1055,7 +1147,12 @@ function AssetEditableList({
               key={a.id}
               className="rounded-xl border border-black/10 dark:border-white/15 p-3 flex items-center justify-between gap-2"
             >
-              <div className="min-w-0">
+              <button
+                type="button"
+                onClick={() => onOpen?.(a)}
+                className="min-w-0 flex-1 text-left rounded-lg hover:bg-black/[0.03] dark:hover:bg-white/[0.04] -m-1 p-1"
+                title="查看该账户流水"
+              >
                 <p className="font-medium truncate">
                   {a.name}
                   <span className="ml-2 text-xs text-gray-400">
@@ -1071,7 +1168,10 @@ function AssetEditableList({
                   ) : null}
                 </p>
                 {a.note && <p className="text-xs text-gray-400 truncate">{a.note}</p>}
-              </div>
+                {onOpen && (
+                  <p className="text-[11px] text-blue-600/80 mt-0.5">点击查看流水</p>
+                )}
+              </button>
               <div className="flex items-center gap-2 shrink-0">
                 <span
                   className={`font-semibold ${
@@ -1108,16 +1208,45 @@ function StatCard({
   value,
   color,
   className = "",
+  href,
+  onClick,
+  hint = "点击查看流水",
 }: {
   label: string;
   value: number;
   color: string;
   className?: string;
+  href?: string;
+  onClick?: () => void;
+  hint?: string;
 }) {
-  return (
-    <div className={`rounded-2xl border border-black/10 dark:border-white/15 p-3 sm:p-4 ${className}`}>
+  const body = (
+    <>
       <p className="text-xs text-gray-500 mb-1">{label}</p>
       <p className={`text-lg sm:text-xl font-semibold ${color}`}>¥{formatMoney(value)}</p>
-    </div>
+      {(href || onClick) && (
+        <p className="text-[11px] text-gray-400 mt-1">{hint}</p>
+      )}
+    </>
   );
+  const cls = `rounded-2xl border border-black/10 dark:border-white/15 p-3 sm:p-4 text-left block w-full ${className} ${
+    href || onClick
+      ? "hover:border-blue-400/60 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 cursor-pointer transition-colors"
+      : ""
+  }`;
+  if (href) {
+    return (
+      <a href={href} className={cls}>
+        {body}
+      </a>
+    );
+  }
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={cls}>
+        {body}
+      </button>
+    );
+  }
+  return <div className={cls}>{body}</div>;
 }

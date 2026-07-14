@@ -122,6 +122,12 @@ def list_transactions():
     category = request.args.get("category")
     if category:
         q = q.filter_by(category=category)
+    t_type = (request.args.get("type") or "").strip()
+    if t_type in ("income", "expense"):
+        q = q.filter_by(type=t_type)
+    account = (request.args.get("account") or "").strip()[:32]
+    if account:
+        q = q.filter_by(account=account)
     items = q.order_by(Transaction.date.desc(), Transaction.id.desc()).all()
     return jsonify([t.to_dict() for t in items]), 200
 
