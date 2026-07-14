@@ -48,12 +48,15 @@ should_act：用户明确汇报账户余额、欠款、记账、要求记下 →
 
 data：
 - balance: {name, balance(number), kind?: asset|liability, note?}
-- transaction: {type income|expense, amount, category, note?, date?}
+- transaction: {type income|expense, amount, category, note?, date?, account?}
+  account=付款账户（花呗/工行/微信等）；花呗白条支付时必填，表示增加欠款
 - reminder: {title, due_at ISO, type bill|life|anniversary, note?, repeat?: none|monthly|weekly, linked_asset_name?}
 - query: {topic assets|expense|income|reminders|overview}
 
 硬性规则：
-- 提到花呗/白条/借呗/信用卡欠款时，必须同时给出：① balance（kind=liability）② reminder（type=bill，含还款日）
+- 「花呗支付500」「用花呗付了300」→ transaction(expense)+account=花呗；禁止写成 balance 把花呗设为500
+- 「吃饭花了50，工商银行付款」→ transaction(expense,餐饮)+account=工行
+- 提到花呗/白条/借呗/信用卡欠款（欠/待还/应还）时，必须同时给出：① balance（kind=liability）② reminder（type=bill，含还款日）
 - 若说「每月/每个月 X 号」，reminder.repeat=monthly，并填 linked_asset_name（如花呗）
 - 不能只记余额不建还款提醒；日期可用「七月25日」「7.25」「每月25号」等
 
@@ -63,6 +66,12 @@ data：
 
 用户：「花呗欠款800，七月25日还」
 → batch：balance(花呗,800,liability) + reminder(还花呗 800元, due 本年7月25日)
+
+用户：「花呗支付500」
+→ transaction：expense 500，account=花呗，category=其他
+
+用户：「吃饭花了50，工商银行付款」
+→ transaction：expense 50，category=餐饮，account=工行
 """
 
 def _normalize_provider(provider: str | None) -> str:
@@ -208,6 +217,66 @@ def _extract_asset_name(text: str) -> str:
 def _is_liability_name(name: str) -> bool:
     return any(k in (name or "") for k in LIABILITY_KEYWORDS)
 
+
+def _looks_like_payment(text: str) -> bool:
+    """花钱/付款类表达（区别于「账户余额汇报」）。"""
+    return bool(
+        re.search(
+            r"支付|付款|付了|花了|消费|买了|刷了|"
+            r"用.{0,8}(?:付|支付|付款)|"
+            r"(?:花呗|白条|借呗|信用卡|微信|支付宝|建行|工行|招行).{0,4}(?:支付|付款|付了|付)",
+            text or "",
+        )
+    )
+
+
+def _extract_pay_account(text: str) -> str:
+    """从「花呗支付 / 工行付款 / 用微信付」提取付款账户。"""
+    text = _normalize_finance_text(text or "")
+    names = (
+        "京东白条",
+        "花呗",
+        "白条",
+        "借呗",
+        "信用卡",
+        "微信",
+        "支付宝",
+        "建行",
+        "工行",
+        "招行",
+        "农行",
+        "中行",
+        "交行",
+        "现金",
+    )
+    joined = "|".join(names)
+    m = re.search(
+        rf"(?:用|通过|经)\s*({joined})\s*(?:来)?(?:支付|付款|付了|付|刷|花了|消费)?",
+        text,
+    )
+    if m:
+        return m.group(1)
+    m = re.search(
+        rf"({joined})\s*(?:支付|付款|付了|付的|付)",
+        text,
+    )
+    if m:
+        return m.group(1)
+    return ""
+
+
+def _infer_expense_category(text: str) -> str:
+    if re.search(r"吃饭|午饭|午餐|早餐|晚餐|外卖|餐饮|食堂|奶茶|咖啡|宵夜", text):
+        return "餐饮"
+    if re.search(r"交通|地铁|打车|公交|出租|加油|滴滴", text):
+        return "交通"
+    if re.search(r"房租|水电|物业|话费|网费", text):
+        return "居住"
+    if re.search(r"超市|日用|购物|淘宝|京东|拼多多", text):
+        return "购物"
+    return "其他"
+
+
 def _parse_cn_due(text: str, default_hour: int = 10) -> str:
     """把「7月25日」「七月25日」「7.25」「25号还」等解析为今年 ISO 时间。"""
     now = datetime.now()
@@ -302,6 +371,11 @@ def _looks_like_balance(text: str) -> bool:
         r"余额为|余额是|还有\d|剩\d|记一下|同步|录入", text
     ):
         return False
+    # 支付/消费不是余额汇报（「花呗支付500」「工行付款」）
+    if _looks_like_payment(text) and not re.search(
+        r"余额|结余|还剩|欠款|欠了|待还|应还|账单", text
+    ):
+        return False
     return bool(
         re.search(
             r"余额|结余|还剩|剩了|剩下|账户|资产|基金|微信|支付宝|建行|工行|招行|"
@@ -390,6 +464,10 @@ def _regex_extract_debts(text: str) -> list[dict]:
     for m in debt_pat.finditer(text):
         name, amount_s = m.group(1), m.group(2)
         if name == "白条" and text[max(0, m.start() - 2) : m.start()] == "京东":
+            continue
+        # 「花呗支付500」中间是支付动词 → 消费记账，不是欠款余额
+        between = text[m.start(1) + len(name) : m.start(2)]
+        if re.search(r"支付|付款|付了|花了|消费|买了|刷了", between):
             continue
         amount = _parse_cn_amount(amount_s)
         if amount is None or amount < 0:
@@ -603,7 +681,8 @@ def _enrich_actions_with_debts(text: str, actions: list[dict]) -> list[dict]:
 def _looks_like_record(text: str) -> bool:
     return bool(
         re.search(
-            r"记|花了|付了|买了|消费|支出|收入|到账|工资|奖金|打车|午饭|早餐|晚餐|奶茶|咖啡",
+            r"记|花了|付了|支付|付款|买了|消费|支出|收入|到账|工资|奖金|打车|"
+            r"午饭|早餐|晚餐|奶茶|咖啡",
             text,
         )
     )
@@ -726,6 +805,9 @@ def _normalize_one_action(intent: str, data: dict, source_text: str) -> dict | N
             amount = 0
         if amount <= 0:
             return None
+        account = (data.get("account") or data.get("asset_name") or "").strip()[:32]
+        if not account:
+            account = _extract_pay_account(source_text)
         return {
             "intent": "transaction",
             "data": {
@@ -734,6 +816,7 @@ def _normalize_one_action(intent: str, data: dict, source_text: str) -> dict | N
                 "category": (data.get("category") or "其他")[:32],
                 "note": (data.get("note") or source_text)[:200],
                 "date": (data.get("date") or date.today().isoformat())[:10],
+                "account": account,
             },
         }
     if intent == "reminder":
@@ -875,6 +958,14 @@ def _fallback_understand(message: str, context: dict | None) -> dict:
             "actions": [one],
             "summary": f"识别为{parsed['intent']}",
         }
+    if parsed.get("intent") == "batch" and parsed.get("actions"):
+        return {
+            "intent": "batch",
+            "should_act": True,
+            "data": {},
+            "actions": parsed["actions"],
+            "summary": f"规则识别批量写入 {len(parsed['actions'])} 项",
+        }
     return {"intent": "chat", "should_act": False, "data": {}, "actions": [], "summary": ""}
 
 def _finalize_understanding(source: str, result: dict) -> dict:
@@ -930,6 +1021,20 @@ def understand_message(
             ]
             if money_lines:
                 source = "\n".join(money_lines[-3:])
+
+    # 支付/消费优先：避免「花呗支付500」「工行付款」被当成余额
+    pay_txn = _regex_parse_transaction(source)
+    if pay_txn:
+        return _finalize_understanding(
+            source,
+            {
+                "intent": "transaction",
+                "should_act": True,
+                "data": pay_txn.get("data") or {},
+                "actions": [pay_txn],
+                "summary": "识别为记账（含付款账户）",
+            },
+        )
 
     # 含花呗/白条欠款：规则直接出账户+提醒，避免 LLM 只聊不落库
     debt_actions = _regex_extract_debts(source)
@@ -1066,11 +1171,12 @@ def generate_chat_reply(
         parts.append(f"【系统已执行】{action_note}")
     elif pending_count > 0:
         parts.append(
-            f"【待用户确认】已识别 {pending_count} 项待写入（含账户余额与还款提醒），"
-            "界面已弹出可编辑确认卡片；尚未写入数据库。"
-            "请用角色语气请用户核对下方卡片后点确定。"
-            "禁止说「系统没有提醒功能」「等以后再添」——提醒卡已经生成。"
-            "禁止说某项「还没入库」除非该项没有对应卡片。"
+            f"【待用户确认】本次消息已识别 {pending_count} 项待写入，"
+            "界面已为【本轮】弹出可编辑确认卡片；尚未写入数据库。"
+            "请用角色语气请用户核对【下方本轮卡片】后点确定。"
+            "禁止拿上一轮未确认卡片来拖延本轮记账；本轮有记账卡就应请用户确认本轮卡。"
+            "禁止说「系统没有提醒功能」「等以后再添」——若有提醒卡则已经生成。"
+            "禁止编造「等旧卡入库后再补记本笔」——本笔若已有确认卡，确认即可写入。"
         )
     else:
         parts.append("【系统已执行】无（本次未写入数据库）")
@@ -1084,27 +1190,28 @@ def generate_chat_reply(
     if pending_count > 0:
         ask = {
             "butler": (
-                f"好的，我整理了 {pending_count} 项（账户余额/负债和还款提醒都在下面的卡片里）。"
-                "请逐张核对，点确定后才会写入；写好后可在统计页和提醒页查看。"
+                f"好的，本轮整理了 {pending_count} 项确认卡（记账会联动扣款/记欠款）。"
+                "请核对方才这几张，点确定后写入；与上一轮未确认的卡片互不影响。"
             ),
             "servant": (
-                f"嗻！奴才拟了 {pending_count} 条草稿，含账户与还款提醒，都在下方卡片。"
-                "主子填妥点确定，奴才这才记入账册；统计页、提醒页均可过目。"
+                f"嗻！本轮奴才拟了 {pending_count} 条草稿在下方。"
+                "主子点确定即入库；花呗支付会加欠款，银行卡付款会扣余额。"
+                "先前未确认的卡片请另点，不挡本笔。"
             ),
             "sassy": (
-                f"听懂了，{pending_count} 张卡在下面——余额和还款提醒都有。"
-                "你自己核对点确定，别事后说我没提醒你。"
+                f"本轮 {pending_count} 张卡在下面，核对点确定就行。"
+                "别拿旧卡当借口拖着；花呗付的会加欠款，卡付的会扣余额。"
             ),
             "lover": (
-                f"我听明白啦，下面有 {pending_count} 张确认卡（含还款提醒），"
-                "你改好再点确定就好～写入后统计页和提醒页都能看到。"
+                f"本轮有 {pending_count} 张确认卡～你改好点确定就好。"
+                "这笔和之前未确认的分开处理哦。"
             ),
         }
-        # 仍可尝试 LLM，但若回复像在否认功能则回退模板
+        # 仍可尝试 LLM，但若回复像在否认功能/拖延本笔则回退模板
         user_prompt = (
             "以下是对话历史、用户数据与当前消息。请用角色语气自然回复。\n"
-            "硬性规则：必须请用户确认下方卡片；禁止声称没有提醒/记账功能；"
-            "禁止把未点确定的内容说成已入库。\n"
+            "硬性规则：必须请用户确认【本轮】下方卡片；禁止声称没有提醒/记账功能；"
+            "禁止把未点确定的内容说成已入库；禁止用旧卡拖延本轮记账写入。\n"
             + "\n".join(parts)
         )
         provider, key, base, model = _ai_params(ai_config)
@@ -1112,7 +1219,8 @@ def generate_chat_reply(
         bad = bool(
             reply
             and re.search(
-                r"没有.{0,8}(提醒|功能)|等系统|以后再|尚未支持|还没.{0,6}功能|添此等",
+                r"没有.{0,8}(提醒|功能)|等系统|以后再|尚未支持|还没.{0,6}功能|添此等|"
+                r"还没入库呢|等.{0,12}入库.{0,8}再|立马把.{0,30}补上",
                 reply,
             )
         )
@@ -1195,10 +1303,62 @@ def _regex_parse_balance(text: str) -> dict | None:
         "data": {"name": _extract_asset_name(text), "balance": amount, "note": text[:200]},
     }
 
+
+def _regex_parse_transaction(text: str) -> dict | None:
+    """解析支出/收入，并尽量带上付款账户。"""
+    text = (text or "").strip()
+    if not text:
+        return None
+    # 纯欠款/余额汇报不走这里
+    if re.search(r"(?:欠款|欠了|待还|应还|余额|结余)", text) and not _looks_like_payment(text):
+        return None
+    if not (_looks_like_payment(text) or _looks_like_record(text)):
+        return None
+    today = date.today().isoformat()
+    amt = _amount_token_re()
+    m = re.search(rf"({amt})", text)
+    if not m:
+        return None
+    amount = _parse_cn_amount(m.group(1))
+    if amount is None or amount <= 0:
+        return None
+    if re.search(r"工资|收入|奖金|到账", text) and not re.search(r"花了|付了|支付|付款|消费", text):
+        return {
+            "intent": "transaction",
+            "data": {
+                "type": "income",
+                "amount": amount,
+                "category": "工资",
+                "note": text[:200],
+                "date": today,
+                "account": _extract_pay_account(text),
+            },
+        }
+    account = _extract_pay_account(text)
+    category = _infer_expense_category(text)
+    note = text[:200]
+    if account and account not in note:
+        note = f"{note}；{account}支付"[:200]
+    return {
+        "intent": "transaction",
+        "data": {
+            "type": "expense",
+            "amount": amount,
+            "category": category,
+            "note": note,
+            "date": today,
+            "account": account,
+        },
+    }
+
+
 def _regex_parse(text: str) -> dict:
     text = text.strip()
-    today = date.today().isoformat()
-    # 花呗/白条优先：不能只走余额而丢掉还款提醒
+    # 支付/消费优先于余额，避免「花呗支付500」被设成花呗余额=500
+    txn = _regex_parse_transaction(text)
+    if txn:
+        return txn
+    # 花呗/白条欠款：账户 + 还款提醒
     debts = _regex_extract_debts(text)
     if debts:
         if len(debts) == 1:
@@ -1223,34 +1383,6 @@ def _regex_parse(text: str) -> dict:
                 "note": "",
             },
         }
-    m = re.search(r"(\d+(?:\.\d{1,2})?)", text)
-    if m and _looks_like_record(text):
-        amount = float(m.group(1))
-        if amount > 0:
-            category = "餐饮"
-            if re.search(r"交通|地铁|打车|公交", text):
-                category = "交通"
-            elif re.search(r"工资|收入|奖金|到账", text):
-                return {
-                    "intent": "transaction",
-                    "data": {
-                        "type": "income",
-                        "amount": amount,
-                        "category": "工资",
-                        "note": text[:200],
-                        "date": today,
-                    },
-                }
-            return {
-                "intent": "transaction",
-                "data": {
-                    "type": "expense",
-                    "amount": amount,
-                    "category": category,
-                    "note": text[:200],
-                    "date": today,
-                },
-            }
     return {"intent": "unknown", "data": {}}
 
 def _llm_parse(text: str, ai_config: dict | None = None) -> dict | None:
@@ -1337,6 +1469,7 @@ def apply_transaction(user_id: int, data: dict) -> str:
         raise ValueError("invalid amount")
     category = (data.get("category") or "其他").strip()[:32]
     note = (data.get("note") or "").strip()[:200]
+    account = (data.get("account") or data.get("asset_name") or "").strip()[:32]
     d = datetime.strptime((data.get("date") or date.today().isoformat())[:10], "%Y-%m-%d").date()
     txn = Transaction(
         user_id=user_id,
@@ -1347,9 +1480,52 @@ def apply_transaction(user_id: int, data: dict) -> str:
         date=d,
     )
     db.session.add(txn)
+    account_note = _adjust_account_for_transaction(user_id, account, t_type, amount)
     db.session.commit()
     label = "收入" if t_type == "income" else "支出"
-    return f"已记录{label} {float(amount)} 元（{category}）"
+    base = f"已记录{label} {float(amount)} 元（{category}）"
+    return base + account_note
+
+
+def _adjust_account_for_transaction(
+    user_id: int, account: str, t_type: str, amount: Decimal
+) -> str:
+    """付款账户联动：负债账户增加欠款，资产账户扣减余额。"""
+    name = (account or "").strip()[:32]
+    if not name:
+        return ""
+    asset = Asset.query.filter_by(user_id=user_id, name=name).first()
+    is_liab = _is_liability_name(name) or (asset is not None and (asset.kind or "") == "liability")
+    if t_type == "expense":
+        delta = amount if is_liab else -amount
+    else:
+        delta = -amount if is_liab else amount
+
+    if asset:
+        asset.balance = Decimal(str(asset.balance or 0)) + delta
+        if is_liab:
+            asset.kind = "liability"
+            if "负债" not in (asset.note or ""):
+                asset.note = (("负债欠款；" + (asset.note or "")).strip("；"))[:200]
+        asset.updated_at = datetime.utcnow()
+        if is_liab:
+            return f"；{name}欠款现为 {float(asset.balance):g} 元"
+        return f"；已从{name}扣除，余额现为 {float(asset.balance):g} 元"
+
+    if is_liab:
+        start = amount if t_type == "expense" else Decimal("0")
+        db.session.add(
+            Asset(
+                user_id=user_id,
+                name=name,
+                balance=start,
+                kind="liability",
+                note="负债欠款",
+            )
+        )
+        return f"；已新建负债账户「{name}」{float(start):g} 元"
+
+    return f"；未找到账户「{name}」，仅记流水未改余额"
 
 def apply_reminder(user_id: int, data: dict) -> str:
     title = (data.get("title") or "").strip()[:120]

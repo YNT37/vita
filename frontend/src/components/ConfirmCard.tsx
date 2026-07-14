@@ -11,6 +11,7 @@ export type ConfirmDraft = {
   category?: string;
   note?: string;
   date?: string;
+  account?: string;
   // reminder
   title?: string;
   due_at?: string;
@@ -68,6 +69,7 @@ export function pendingToCard(action: PendingAction, id: string): ConfirmCardSta
         category: String(data.category ?? "其他"),
         note: String(data.note ?? ""),
         date: String(data.date || todayISO()).slice(0, 10),
+        account: String(data.account ?? data.asset_name ?? ""),
       },
     };
   }
@@ -112,13 +114,16 @@ export function pendingToCard(action: PendingAction, id: string): ConfirmCardSta
 export function draftToBody(card: ConfirmCardState): Record<string, unknown> {
   const d = card.draft;
   if (card.intent === "transaction") {
-    return {
+    const body: Record<string, unknown> = {
       type: d.type || "expense",
       amount: Number(d.amount),
       category: (d.category || "其他").trim(),
       note: (d.note || "").trim(),
       date: (d.date || todayISO()).slice(0, 10),
     };
+    const account = (d.account || "").trim();
+    if (account) body.account = account;
+    return body;
   }
   if (card.intent === "reminder") {
     return {
@@ -223,6 +228,16 @@ export function ConfirmCard({ card, busy, onChange, onConfirm, onDismiss }: Prop
               value={card.draft.category || ""}
               disabled={disabled}
               onChange={(e) => setDraft({ category: e.target.value })}
+            />
+          </label>
+          <label className="text-xs text-gray-500 space-y-1">
+            <span>付款账户</span>
+            <input
+              className={inputCls}
+              value={card.draft.account || ""}
+              disabled={disabled}
+              placeholder="如：花呗 / 工行"
+              onChange={(e) => setDraft({ account: e.target.value })}
             />
           </label>
           <label className="text-xs text-gray-500 space-y-1">

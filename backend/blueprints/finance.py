@@ -55,6 +55,7 @@ def create_transaction():
     if len(note) > 200:
         raise ApiError("invalid_note", "备注不超过200位", 400, "note")
     d = _parse_date(data.get("date"))
+    account = (data.get("account") or data.get("asset_name") or "").strip()[:32]
     txn = Transaction(
         user_id=_uid(),
         type=t_type,
@@ -64,6 +65,10 @@ def create_transaction():
         date=d,
     )
     db.session.add(txn)
+    if account:
+        from services.ai_service import _adjust_account_for_transaction
+
+        _adjust_account_for_transaction(_uid(), account, t_type, amount)
     db.session.commit()
     return jsonify(txn.to_dict()), 201
 
