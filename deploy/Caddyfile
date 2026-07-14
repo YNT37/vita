@@ -1,4 +1,4 @@
-:80 {
+vita.sanseven.top {
 	encode gzip
 
 	handle /api* {
