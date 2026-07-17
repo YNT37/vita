@@ -6,6 +6,9 @@
 《移动应用项目工程实践》居家实训考核作品。
 
 **仓库**：https://github.com/YNT37/vita
+**演示网站**：https://vita.sanseven.top/
+**文档和视频位置**：https://github.com/YNT37/vita/blob/main/docs/
+**演示账号**：demo / demo123456
 
 ## ✨ 功能
 - 🔐 多用户账号体系（注册/登录，JWT 鉴权，数据按用户隔离）✅
