@@ -113,7 +113,7 @@ docker compose up -d --build
 | 文档 | 说明 |
 |---|---|
 | [docs/资料索引.md](docs/资料索引.md) | **交付材料总目录** |
-| [docs/演示大纲.md](docs/演示大纲.md) | **录屏 / 演示脚本** |
+| [docs/Video.mp4](docs/Video.mp4) | **演示录屏** |
 | [docs/部署/README.md](docs/部署/README.md) | 部署（本地 / 云 · Docker） |
 | [docs/需求文档.md](docs/需求文档.md) | 功能需求 |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 架构 |
